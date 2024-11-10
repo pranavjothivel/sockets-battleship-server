@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stdbool.h>
 #include <unistd.h>
 #include <arpa/inet.h>
 #include <sys/socket.h>
@@ -9,6 +10,23 @@
 #define PLAYER01_PORT 2201
 #define PLAYER02_PORT 2202
 #define BUFFER_SIZE 1024
+
+bool player_01_ready = false;
+bool player_02_ready = false;
+
+// function declarations
+void end_game(int *conn_fd_01, int *conn_fd_02, int *listen_fd_01, int *listen_fd_02);
+
+typedef struct Board {
+    int pieces_remaining;
+    int **board;
+} Board;
+
+typedef struct Player {
+    int number;
+    bool ready;
+    Board board;
+} Player;
 
 int main() {
     // Game server setup on ports 2201 and 2202
@@ -21,22 +39,22 @@ int main() {
     char buffer[BUFFER_SIZE] = {0};
 
     if ((listen_fd_01 = socket(AF_INET, SOCK_STREAM, 0)) == 0) {
-        perror("[Server] Socket for Player 01 FAILED.");
+        perror("[Server] Socket for Player 01 FAILED.\n");
         exit(EXIT_FAILURE);
     }
     if ((listen_fd_02 = socket(AF_INET, SOCK_STREAM, 0)) == 0) {
-        perror("[Server] Socket for Player 02 FAILED.");
+        perror("[Server] Socket for Player 02 FAILED.\n");
         exit(EXIT_FAILURE);
     }
 
     if (setsockopt(listen_fd_01, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt)) ||
         setsockopt(listen_fd_02, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt))) {
-        perror("[Server] setsockopt(..., SO_REUSEADDR, ...) failed for a player port.");
+        perror("[Server] setsockopt(..., SO_REUSEADDR, ...) failed for a player port.\n");
         exit(EXIT_FAILURE);
     }
     if (setsockopt(listen_fd_01, SOL_SOCKET, SO_REUSEPORT, &opt, sizeof(opt)) ||
         setsockopt(listen_fd_02, SOL_SOCKET, SO_REUSEPORT, &opt, sizeof(opt))) {
-        perror("[Server] setsockopt(..., SO_REUSEPORT, ...) failed for a player port.");
+        perror("[Server] setsockopt(..., SO_REUSEPORT, ...) failed for a player port.\n");
         exit(EXIT_FAILURE);
     }
 
@@ -54,31 +72,30 @@ int main() {
 
     // bind sockets
     if (bind(listen_fd_01, (struct sockaddr *)&address_01, sizeof(address_01)) < 0) {
-        perror("[Server] Player 01 : bind() failed.");
+        perror("[Server] Player 01 : bind() failed.\n");
         exit(EXIT_FAILURE);
     }
     if (bind(listen_fd_02, (struct sockaddr *)&address_02, sizeof(address_02)) < 0) {
-        perror("[Server] Player 02 : bind() failed.");
+        perror("[Server] Player 02 : bind() failed.\n");
         exit(EXIT_FAILURE);
     }
 
     // listen for connections
     if (listen(listen_fd_01, 3) < 0) {
-        perror("[Server] Player 01 : listen() failed.");
+        perror("[Server] Player 01 : listen() failed.\n");
         exit(EXIT_FAILURE);
     }
     if (listen(listen_fd_02, 3) < 0) {
-        perror("[Server] Player 02 : listen() failed.");
+        perror("[Server] Player 02 : listen() failed.\n");
         exit(EXIT_FAILURE);
     }
 
     printf("[Server] Waiting for players to connect...\n");
 
-    // Add code here for accepting and managing player connections
     while (1) {
         conn_fd_01 = accept(listen_fd_01, (struct sockaddr *)&address_01, (socklen_t*)&address_01_len);
         if (conn_fd_01 < 0) {
-            perror("[Server] Player 01: accept() failed.");
+            perror("[Server] Player 01: accept() failed.\n");
             exit(EXIT_FAILURE);
         } else {
             printf("[Server] Player 01: accept() success.\n");
@@ -86,25 +103,27 @@ int main() {
 
         conn_fd_02 = accept(listen_fd_02, (struct sockaddr *)&address_02, (socklen_t*)&address_02_len);
         if (conn_fd_02 < 0) {
-            perror("[Server] Player 02: accept() failed.");
+            perror("[Server] Player 02: accept() failed.\n");
             exit(EXIT_FAILURE);
         } else {
             printf("[Server] Player 02: accept() success.\n");
         }
 
-        memset(&buffer, 0, sizeof(buffer));
+        memset(buffer, 0, sizeof(buffer));
 
-        while (1) {
+        while (!player_01_ready && !player_02_ready) {
             
         }
 
     }
 
-    // Clean up
-    close(conn_fd_01);
-    close(conn_fd_02);
-    close(listen_fd_01);
-    close(listen_fd_02);
-
+    end_game(&conn_fd_01, &conn_fd_02, &listen_fd_01, &listen_fd_02);
     return EXIT_SUCCESS;
+}
+
+void end_game(int *conn_fd_01, int *conn_fd_02, int *listen_fd_01, int *listen_fd_02) {
+    close(*conn_fd_01);
+    close(*conn_fd_02);
+    close(*listen_fd_01);
+    close(*listen_fd_02);
 }
