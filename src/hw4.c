@@ -169,7 +169,7 @@ int main() {
 
     // ***************************** End Server Setup ***********************************
 
-    // Server -> Main Game Loop
+    // ************************** Server -> Main Game Loop **********************************
     while (true) {
         while (is_player_ready(player_01) == false) {
             read_from_player_socket(conn_fd_01, buffer);
@@ -376,7 +376,7 @@ bool delete_board(Board *board) {
 void pstdout(const char *format, ...) {
     va_list args;
     va_start(args, format);
-    printf("[Server] ");
+    printf("[Server] - [INFO] ");
     vprintf(format, args);
     printf("\n");
     va_end(args);
@@ -385,7 +385,7 @@ void pstdout(const char *format, ...) {
 void pstderr(const char *format, ...) {
     va_list args;
     va_start(args, format);
-    fprintf(stderr, "[Server] ");
+    fprintf(stderr, "[Server] - [ERROR] ");
     vfprintf(stderr, format, args);
     fprintf(stderr, "\n");
     va_end(args);
