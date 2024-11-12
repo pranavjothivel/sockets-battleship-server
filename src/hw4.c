@@ -36,9 +36,6 @@
 
 #define ACK "A"
 
-bool player_01_ready = false;
-bool player_02_ready = false;
-
 typedef struct Board {
     int pieces_remaining;
     int width;
@@ -59,25 +56,32 @@ typedef struct Board {
 typedef struct Player {
     int number;
     bool ready;
-    Board board;
-    //PlayerSocketConnection socket;
+    Board *board;
+    //PlayerSocketConnection *socket;
 } Player;
 
 
-/* Function Declarations */
+// Function declarations
 
+void read_from_player_socket(int socket_fd, char *buffer);
+Player* initialize_player(int number, bool ready);
+bool is_player_ready(Player *player);
+Board* initialize_board(int width, int height);
+bool delete_board(Board *board);
 void pstdout(const char *format, ...);
 void pstderr(const char *format, ...);
 void send_response(int conn_fd, const char *error);
-void read_from_player_socket(int socket_fd, char *buffer);
-bool initialize_board(int width, int height, Board *board);
-bool delete_board(Board *board);
 void end_game(int *conn_fd_01, int *conn_fd_02, int *listen_fd_01, int *listen_fd_02);
+
+// player  pointers
+Player *player_01 = NULL;
+Player *player_02 = NULL;
 
 int main() {
     // ********************* Begin Server Setup ***************************
     // DO NOT TOUCH SOCKET SETUP!!
     // Game server setup on ports 2201 and 2202
+
     int conn_fd_01, conn_fd_02;
     int listen_fd_01, listen_fd_02;
     struct sockaddr_in address_01, address_02;
@@ -147,6 +151,7 @@ int main() {
         end_game(&conn_fd_01, &conn_fd_02, &listen_fd_01, &listen_fd_02);
         exit(EXIT_FAILURE);
     }
+    player_01 = initialize_player(1, false);
     pstdout("Player 01: accept() success.");
 
     conn_fd_02 = accept(listen_fd_02, (struct sockaddr *)&address_02, (socklen_t*)&address_02_len);
@@ -155,16 +160,16 @@ int main() {
         end_game(&conn_fd_01, &conn_fd_02, &listen_fd_01, &listen_fd_02);
         exit(EXIT_FAILURE);
     }
+    player_02 = initialize_player(2, false);
     pstdout("Player 02: accept() success.");
 
     pstdout("Ready to play Battleship!");
 
-    // End Server Setup **************************************************************
+    // ***************************** End Server Setup ***********************************
 
     // Server -> Main Game Loop
-
     while (true) {
-        while (!player_01_ready) {
+        while (is_player_ready(player_01) == false) {
             read_from_player_socket(conn_fd_01, buffer);
 
             char packet_type;
@@ -176,7 +181,8 @@ int main() {
             } 
             else if (sscanf(buffer, "%c %d %d", &packet_type, &width, &height) == 3 && packet_type == 'B') {
                 if (width >= 10 && height >= 10) {
-                    player_01_ready = true;
+                    player_01->ready = true;
+                    pstdout("Player 01 is ready!");
                     send_response(conn_fd_01, "A");
                 } 
                 else {
@@ -194,33 +200,33 @@ int main() {
             }
         }
 
-        while (!player_02_ready) {
+        while (is_player_ready(player_02) == false) {
             read_from_player_socket(conn_fd_02, buffer);
 
             char packet_type;
             char extra_char;
 
             if (sscanf(buffer, "%c %c", &packet_type, &extra_char) == 1 && packet_type == 'B') {
-                player_02_ready = true;
+                player_02->ready = true;
+                pstdout("Player 02 is ready!");
                 send_response(conn_fd_02, "A");
             } else {
                 send_response(conn_fd_02, INVALID_BEGIN_PACKET_TYPE_INVALID_PARAMETERS);
             }
         }
 
-        if (player_01_ready && player_02_ready) {
+        if (is_player_ready(player_01) && is_player_ready(player_02)) {
             pstdout("Both Players are Ready!");
             break;
         }
     }
 
-
     end_game(&conn_fd_01, &conn_fd_02, &listen_fd_01, &listen_fd_02);
     return EXIT_SUCCESS;
 }
 
-void send_response(int conn_fd, const char *error) {
-    send(conn_fd, error, strlen(error), 0);
+void send_response(int conn_fd, const char *packet) {
+    send(conn_fd, packet, strlen(packet), 0);
 }
 
 void read_from_player_socket(int socket_fd, char *buffer) {
@@ -237,8 +243,34 @@ void read_from_player_socket(int socket_fd, char *buffer) {
     }
 }
 
+char get_token_from_buffer(char *buffer) {
+    return strtok(buffer, " ");
+}
+
+Player* initialize_player(int number, bool ready) {
+    Player* player = malloc(sizeof(Player));
+    if (player == NULL) {
+        pstderr("initialize_player(): Error malloc'ing player!");
+        return NULL;
+    }
+    player->number = number;
+    player->ready = ready;
+    player->board = NULL;
+    return player;
+}
+
+bool is_player_ready(Player *player) {
+    // assume valid pointer is passed.
+    return player->ready;
+}
+
 // width is the number of cols, and height is number of rows
-bool initialize_board(int width, int height, Board *board) {
+Board* initialize_board(int width, int height) {
+    Board* board = malloc(sizeof(Board));
+    if (board == NULL) {
+        pstderr("initialize_board(): Error malloc'ing board.");
+        return NULL;
+    }
     board->pieces_remaining = 5;
     board->width = width;
     board->height = height;
@@ -246,7 +278,8 @@ bool initialize_board(int width, int height, Board *board) {
     board->board = malloc(board->height * sizeof(int*));
     if (board->board == NULL) {
         pstderr("initialize_board(): Error malloc'ing rows for board.");
-        return false;
+        free(board);
+        return NULL;
     }
 
     for (unsigned int i = 0; i < board->height; i++) {
@@ -257,11 +290,12 @@ bool initialize_board(int width, int height, Board *board) {
                 free(board->board[j]);
             }
             free(board->board);
-            return false;
+            free(board); // Free the allocated board structure
+            return NULL;
         }
     }
 
-    return true;
+    return board;
 }
 
 bool delete_board(Board *board) {
