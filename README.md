@@ -44,3 +44,4 @@ Pranav Jothivel
 - [ ] Implement PlayerSocketConnection
 - [ ] Update launch target for automated testings
 - [ ] Simplify end_game logic
+- [ ] MIGHT BE NEEDED: hash tokens to compare in switch so cases like 'Bb' and 'bc' are caugh
