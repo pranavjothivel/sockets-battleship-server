@@ -50,7 +50,7 @@ typedef struct Board {
 //     int connection_fd;
 //     int listen_fd;
 //     struct sockaddr_in address;
-//     int address_len;
+//     socklen_t address_len;
 //     int port;
 // } PlayerSocketConnection;
 
@@ -247,8 +247,21 @@ int main() {
     return EXIT_SUCCESS;
 }
 
+// PlayerSocketConnection* initialize_socket(int port) {
+//     PlayerSocketConnection* socket = malloc(sizeof(PlayerSocketConnection));
+//     if (socket == NULL) {
+//         pstderr("initialize_socket(): Error malloc'ing socket");
+//     }
+//     socket->port = port;
+//     return socket;
+// }
+
 void send_response(int conn_fd, const char *packet) {
     send(conn_fd, packet, strlen(packet), 0);
+}
+
+void send_shot_response(int conn_fd, int remaining_ships, const char* miss_or_hit) {
+
 }
 
 void read_from_player_socket(int socket_fd, char *buffer) {
