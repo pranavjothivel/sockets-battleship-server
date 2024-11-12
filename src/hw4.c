@@ -212,7 +212,7 @@ int main() {
 
             switch (token) {
                 case 'B':
-                    if (sscanf(buffer, "B %d", &extraneous_input) == 0) {
+                    if (sscanf(buffer, "B %d", &extraneous_input) == 1) {
                         send_response(conn_fd_02, INVALID_BEGIN_PACKET_TYPE_INVALID_PARAMETERS);
                         break;
                     }
