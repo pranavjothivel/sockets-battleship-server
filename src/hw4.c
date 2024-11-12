@@ -5,7 +5,6 @@
 #include <unistd.h>
 #include <arpa/inet.h>
 #include <sys/socket.h>
-#include <asm-generic/socket.h>
 #include <stdarg.h>
 #include <ctype.h>
 
@@ -108,11 +107,6 @@ int main() {
     if (setsockopt(listen_fd_01, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt)) ||
         setsockopt(listen_fd_02, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt))) {
         pstderr("setsockopt(..., SO_REUSEADDR, ...) failed for a player port.");
-        exit(EXIT_FAILURE);
-    }
-    if (setsockopt(listen_fd_01, SOL_SOCKET, SO_REUSEPORT, &opt, sizeof(opt)) ||
-        setsockopt(listen_fd_02, SOL_SOCKET, SO_REUSEPORT, &opt, sizeof(opt))) {
-        pstderr("setsockopt(..., SO_REUSEPORT, ...) failed for a player port.");
         exit(EXIT_FAILURE);
     }
 
