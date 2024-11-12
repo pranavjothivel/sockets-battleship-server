@@ -67,6 +67,7 @@ typedef struct Player {
 void read_from_player_socket(int socket_fd, char *buffer);
 char get_first_token_from_buffer(const char *buffer);
 Player* initialize_player(int number, bool ready);
+void delete_player(Player *player);
 bool is_player_ready(Player *player);
 Board* initialize_board(int width, int height);
 bool delete_board(Board *board);
@@ -312,6 +313,12 @@ Player* initialize_player(int number, bool ready) {
     player->ready = ready;
     player->board = NULL;
     return player;
+}
+
+void delete_player(Player *player) {
+    delete_board(player->board);
+    free(player);
+    player == NULL;
 }
 
 bool is_player_ready(Player *player) {
