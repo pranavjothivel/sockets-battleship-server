@@ -7,6 +7,7 @@
 #include <sys/socket.h>
 #include <asm-generic/socket.h>
 #include <stdarg.h>
+#include <ctype.h>
 
 #define PLAYER01_PORT 2201
 #define PLAYER02_PORT 2202
@@ -64,6 +65,7 @@ typedef struct Player {
 // Function declarations
 
 void read_from_player_socket(int socket_fd, char *buffer);
+char get_first_token_from_buffer(const char *buffer);
 Player* initialize_player(int number, bool ready);
 bool is_player_ready(Player *player);
 Board* initialize_board(int width, int height);
@@ -171,52 +173,71 @@ int main() {
     while (true) {
         while (is_player_ready(player_01) == false) {
             read_from_player_socket(conn_fd_01, buffer);
+            
+            char token = get_first_token_from_buffer(buffer);
+            int width, height, extraneous_input;
+            switch (token) {
+                case 'B':
+                    if (sscanf(buffer, "B %d %d %d", &width, &height, &extraneous_input) == 2 && width >= 10 && height >= 10) {
+                        Board *board01 = initialize_board(width, height);
+                        Board *board02 = initialize_board(width, height);
+                        player_01->board = board01;
+                        player_02->board = board02;
 
-            char packet_type;
-            int width, height;
-            int extra_input;
-
-            if (sscanf(buffer, "%c %d %d %d", &packet_type, &width, &height, &extra_input) == 4 && packet_type == 'B') {
-                send_response(conn_fd_01, INVALID_BEGIN_PACKET_TYPE_INVALID_PARAMETERS);
-            } 
-            else if (sscanf(buffer, "%c %d %d", &packet_type, &width, &height) == 3 && packet_type == 'B') {
-                if (width >= 10 && height >= 10) {
-                    player_01->ready = true;
-                    pstdout("Player 01 is ready!");
-                    send_response(conn_fd_01, "A");
-                } 
-                else {
-                    send_response(conn_fd_01, INVALID_BEGIN_PACKET_TYPE_INVALID_PARAMETERS);
-                }
-            } 
-            else if (sscanf(buffer, "%c %d", &packet_type, &width) == 2 && packet_type == 'B') {
-                send_response(conn_fd_01, INVALID_BEGIN_PACKET_TYPE_INVALID_PARAMETERS);
-            }
-            else if (sscanf(buffer, "%c", &packet_type) == 1 && packet_type == 'B') {
-                send_response(conn_fd_01, INVALID_BEGIN_PACKET_TYPE_INVALID_PARAMETERS);
-            }  
-            else {
-                send_response(conn_fd_01, INVALID_PACKET_TYPE_EXPECTED_BEGIN);
+                        player_01->ready = true;
+                        pstdout("Player 01 is ready to begin!");
+                        send_response(conn_fd_01, ACK);
+                        break;
+                    }
+                    else {
+                        send_response(conn_fd_01, INVALID_BEGIN_PACKET_TYPE_INVALID_PARAMETERS);
+                        break;
+                    }
+                case 'F':
+                    send_response(conn_fd_01, HALT_LOSS);
+                    send_response(conn_fd_02, HALT_WIN);
+                    end_game(&conn_fd_01, &conn_fd_02, &listen_fd_01, &listen_fd_02);
+                    exit(EXIT_SUCCESS);
+                default:
+                    send_response(conn_fd_01, INVALID_PACKET_TYPE_EXPECTED_BEGIN);
+                    break;
             }
         }
 
         while (is_player_ready(player_02) == false) {
             read_from_player_socket(conn_fd_02, buffer);
+            
+            char token = get_first_token_from_buffer(buffer);
+            int extraneous_input;
 
-            char packet_type;
-            char extra_char;
-
-            if (sscanf(buffer, "%c %c", &packet_type, &extra_char) == 1 && packet_type == 'B') {
-                player_02->ready = true;
-                pstdout("Player 02 is ready!");
-                send_response(conn_fd_02, "A");
-            } else {
-                send_response(conn_fd_02, INVALID_BEGIN_PACKET_TYPE_INVALID_PARAMETERS);
+            switch (token) {
+                case 'B':
+                    if (sscanf(buffer, "B %d", &extraneous_input) == 0) {
+                        send_response(conn_fd_02, INVALID_BEGIN_PACKET_TYPE_INVALID_PARAMETERS);
+                        break;
+                    }
+                    else {
+                        player_02->ready = true;
+                        pstdout("Player 02 is ready to begin!");
+                        send_response(conn_fd_02, ACK);
+                        break;
+                    }
+                case 'F':
+                    send_response(conn_fd_02, HALT_LOSS);
+                    send_response(conn_fd_01, HALT_WIN);
+                    end_game(&conn_fd_01, &conn_fd_02, &listen_fd_01, &listen_fd_02);
+                    exit(EXIT_SUCCESS);
+                default:
+                    send_response(conn_fd_02, INVALID_PACKET_TYPE_EXPECTED_BEGIN);
+                    break;
             }
         }
-
+        
+        // main game logic goes here with board, rotations, and everything 
         if (is_player_ready(player_01) && is_player_ready(player_02)) {
             pstdout("Both Players are Ready!");
+            // end_game(&conn_fd_01, &conn_fd_02, &listen_fd_01, &listen_fd_02);
+            // return EXIT_SUCCESS;
             break;
         }
     }
@@ -243,8 +264,42 @@ void read_from_player_socket(int socket_fd, char *buffer) {
     }
 }
 
-char get_token_from_buffer(char *buffer) {
-    return strtok(buffer, " ");
+char get_first_token_from_buffer(const char *buffer) {
+    char *buffer_cpy = strdup(buffer);
+    if (buffer_cpy == NULL) {
+        return '\0';
+    }
+
+    char *token = strtok(buffer_cpy, " ");
+    if (token == NULL) {
+        free(buffer_cpy);
+        return '\0';
+    }
+
+    bool is_num = true;
+    for (int i = 0; token[i] != '\0'; i++) {
+        if (!isdigit((unsigned char)token[i])) {
+            is_num = false;
+            break;
+        }
+    }
+
+    char result;
+    if (is_num) {
+        int num = atoi(token);
+        if (num >= 0 && num <= 127) {
+            result = (char)num;
+        } 
+        else {
+            result = '\0';
+        }
+    }
+    else {
+        result = token[0];
+    }
+
+    free(buffer_cpy);
+    return result;
 }
 
 Player* initialize_player(int number, bool ready) {
