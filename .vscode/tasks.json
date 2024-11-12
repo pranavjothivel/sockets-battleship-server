@@ -26,38 +26,83 @@
 //     ],
 //     "version": "2.0.0"
 // }
+// {
+//     "version": "2.0.0",
+//     "tasks": [
+//         {
+//             "label": "Compile",
+//             "type": "shell",
+//             "command": "./build_scripts/build.sh",
+//             "problemMatcher": []
+//         },
+//         {
+//             "label": "Run hw4",
+//             "type": "shell",
+//             "command": "./build/hw4",
+//             "group": "build",
+//             "problemMatcher": [],
+//             "dependsOn": "Compile"
+//         },
+//         {
+//             "label": "Run player_interactive (1)",
+//             "type": "shell",
+//             "command": "./build/player_interactive",
+//             "group": "build",
+//             "problemMatcher": [],
+//             "dependsOn": "Compile"
+//         },
+//         {
+//             "label": "Run player_interactive (2)",
+//             "type": "shell",
+//             "command": "./build/player_interactive",
+//             "group": "build",
+//             "problemMatcher": [],
+//             "dependsOn": "Compile"
+//         }
+//     ]
+// }
+
 {
     "version": "2.0.0",
     "tasks": [
         {
-            "label": "Compile",
+            "label": "Run Server",
             "type": "shell",
-            "command": "./build_scripts/build.sh",
+            "command": "./build_scripts/run_server.sh",
+            "problemMatcher": [],
+            "presentation": {
+                "group": "groupA",
+                "panel": "dedicated"
+            }
+        },
+        {
+            "label": "Run Player Client 1",
+            "type": "shell",
+            "command": "./build/player_interactive",
+            "problemMatcher": [],
+            "presentation": {
+                "group": "groupA",
+                "panel": "dedicated"
+            }
+        },
+        {
+            "label": "Run Player Client 2",
+            "type": "shell",
+            "command": "./build/player_interactive",
+            "problemMatcher": [],
+            "presentation": {
+                "group": "groupA",
+                "panel": "dedicated"
+            }
+        },
+        {
+            "label": "Run Server and Players",
+            "dependsOn": [
+                "Run Server",
+                "Run Player Client 1",
+                "Run Player Client 2"
+            ],
             "problemMatcher": []
-        },
-        {
-            "label": "Run hw4",
-            "type": "shell",
-            "command": "./build/hw4",
-            "group": "build",
-            "problemMatcher": [],
-            "dependsOn": "Compile"
-        },
-        {
-            "label": "Run player_interactive (1)",
-            "type": "shell",
-            "command": "./build/player_interactive",
-            "group": "build",
-            "problemMatcher": [],
-            "dependsOn": "Compile"
-        },
-        {
-            "label": "Run player_interactive (2)",
-            "type": "shell",
-            "command": "./build/player_interactive",
-            "group": "build",
-            "problemMatcher": [],
-            "dependsOn": "Compile"
         }
     ]
 }
