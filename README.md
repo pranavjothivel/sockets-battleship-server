@@ -30,3 +30,16 @@ Pranav Jothivel
 - [ ] Random M
 - [ ] Random N
 - [ ] Random O
+
+## To-do (by order of priority)
+- [ ] Implement initalize
+- [ ] Implement shoot
+- [ ] Implement query
+- [ ] Implement forfeit
+- [ ] Implement error codes
+- [ ] Implement halt for win
+- [ ] Implement query response
+- [ ] Implement shot response
+- [ ] Implement shapes and rotations
+- [ ] Implement PlayerSocketConnection
+- [ ] Simplify end_game logic
