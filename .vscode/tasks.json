@@ -12,9 +12,9 @@
             }
         },
         {
-            "label": "Run Player Client 1",
+            "label": "Run Interactive Player 1",
             "type": "shell",
-            "command": "./build/player_interactive",
+            "command": "./build_scripts/run_interactive.sh",
             "problemMatcher": [],
             "presentation": {
                 "group": "groupA",
@@ -22,9 +22,9 @@
             }
         },
         {
-            "label": "Run Player Client 2",
+            "label": "Run Interactive Player 2",
             "type": "shell",
-            "command": "./build/player_interactive",
+            "command": "./build_scripts/run_interactive.sh",
             "problemMatcher": [],
             "presentation": {
                 "group": "groupA",
@@ -32,13 +32,60 @@
             }
         },
         {
-            "label": "Run Server and Players",
+            "label": "Run Automated Player 1",
+            "type": "shell",
+            "command": "./build_scripts/player_automated.sh",
+            "args": [
+                "${input:player1Arg}"
+            ],
+            "problemMatcher": [],
+            "presentation": {
+                "group": "groupA",
+                "panel": "dedicated"
+            }
+        },
+        {
+            "label": "Run Automated Player 2",
+            "type": "shell",
+            "command": "./build_scripts/player_automated.sh",
+            "args": [
+                "${input:player2Arg}"
+            ],
+            "problemMatcher": [],
+            "presentation": {
+                "group": "groupA",
+                "panel": "dedicated"
+            }
+        },
+        {
+            "label": "Run Server and Interactive Players",
             "dependsOn": [
                 "Run Server",
-                "Run Player Client 1",
-                "Run Player Client 2"
+                "Run Interactive Player 1",
+                "Run Interactive Player 2"
             ],
             "problemMatcher": []
+        },
+        {
+            "label": "Run Server and Automated Players",
+            "dependsOn": [
+                "Run Server",
+                "Run Automated Player 1",
+                "Run Automated Player 2"
+            ],
+            "problemMatcher": []
+        }
+    ],
+    "inputs": [
+        {
+            "id": "player1Arg",
+            "type": "promptString",
+            "description": "Enter argument for Automated Player 1"
+        },
+        {
+            "id": "player2Arg",
+            "type": "promptString",
+            "description": "Enter argument for Automated Player 2"
         }
     ]
 }
