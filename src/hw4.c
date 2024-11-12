@@ -6,12 +6,15 @@
 #include <arpa/inet.h>
 #include <sys/socket.h>
 #include <asm-generic/socket.h>
+#include <stdarg.h>
 
 #define PLAYER01_PORT 2201
 #define PLAYER02_PORT 2202
 #define BUFFER_SIZE 1024
 
-// game error codes
+// server responses
+
+// error codes
 #define INVALID_PACKET_TYPE_EXPECTED_BEGIN "E 100"
 #define INVALID_PACKET_TYPE_EXPECTED_INITIALIZE "E 101"
 #define INVALID_PACKET_TYPE_EXPECTED_SHOOT_QUERY_PACKET "E 102"
@@ -28,17 +31,18 @@
 #define INVALID_SHOOT_PACKET_CELL_OUT_OF_BOUNDS "E 400"
 #define INVALID_SHOOT_PACKET_CELL_ALREADY_GUESSED "E 401"
 
+#define HALT_WIN "H 1"
+#define HALT_LOSS "H 0"
+
+#define ACK "A"
+
 bool player_01_ready = false;
 bool player_02_ready = false;
 
-/* Function Declarations */
-
-void send_response(int conn_fd, const char *error);
-void read_from_player_socket(int socket_fd, char *buffer);
-void end_game(int *conn_fd_01, int *conn_fd_02, int *listen_fd_01, int *listen_fd_02);
-
 typedef struct Board {
     int pieces_remaining;
+    int width;
+    int height;
     int **board;
 } Board;
 
@@ -59,7 +63,20 @@ typedef struct Player {
     //PlayerSocketConnection socket;
 } Player;
 
+
+/* Function Declarations */
+
+void pstdout(const char *format, ...);
+void pstderr(const char *format, ...);
+void send_response(int conn_fd, const char *error);
+void read_from_player_socket(int socket_fd, char *buffer);
+bool initialize_board(int width, int height, Board *board);
+bool delete_board(Board *board);
+void end_game(int *conn_fd_01, int *conn_fd_02, int *listen_fd_01, int *listen_fd_02);
+
 int main() {
+    // ********************* Begin Server Setup ***************************
+    // DO NOT TOUCH SOCKET SETUP!!
     // Game server setup on ports 2201 and 2202
     int conn_fd_01, conn_fd_02;
     int listen_fd_01, listen_fd_02;
@@ -71,22 +88,22 @@ int main() {
     char buffer[BUFFER_SIZE] = {0};
 
     if ((listen_fd_01 = socket(AF_INET, SOCK_STREAM, 0)) == 0) {
-        perror("[Server] Socket for Player 01 FAILED.\n");
+        pstderr("Socket for Player 01 FAILED.");
         exit(EXIT_FAILURE);
     }
     if ((listen_fd_02 = socket(AF_INET, SOCK_STREAM, 0)) == 0) {
-        perror("[Server] Socket for Player 02 FAILED.\n");
+        pstderr("Socket for Player 02 FAILED.");
         exit(EXIT_FAILURE);
     }
 
     if (setsockopt(listen_fd_01, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt)) ||
         setsockopt(listen_fd_02, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt))) {
-        perror("[Server] setsockopt(..., SO_REUSEADDR, ...) failed for a player port.\n");
+        pstderr("setsockopt(..., SO_REUSEADDR, ...) failed for a player port.");
         exit(EXIT_FAILURE);
     }
     if (setsockopt(listen_fd_01, SOL_SOCKET, SO_REUSEPORT, &opt, sizeof(opt)) ||
         setsockopt(listen_fd_02, SOL_SOCKET, SO_REUSEPORT, &opt, sizeof(opt))) {
-        perror("[Server] setsockopt(..., SO_REUSEPORT, ...) failed for a player port.\n");
+        pstderr("setsockopt(..., SO_REUSEPORT, ...) failed for a player port.");
         exit(EXIT_FAILURE);
     }
 
@@ -104,43 +121,43 @@ int main() {
 
     // bind sockets
     if (bind(listen_fd_01, (struct sockaddr *)&address_01, sizeof(address_01)) < 0) {
-        perror("[Server] Player 01 : bind() failed.\n");
+        pstderr("Player 01 : bind() failed.\n");
         exit(EXIT_FAILURE);
     }
     if (bind(listen_fd_02, (struct sockaddr *)&address_02, sizeof(address_02)) < 0) {
-        perror("[Server] Player 02 : bind() failed.\n");
+        pstderr("Player 02 : bind() failed.\n");
         exit(EXIT_FAILURE);
     }
 
     // listen for connections
     if (listen(listen_fd_01, 3) < 0) {
-        perror("[Server] Player 01 : listen() failed.\n");
+        pstderr("Player 01 : listen() failed.\n");
         exit(EXIT_FAILURE);
     }
     if (listen(listen_fd_02, 3) < 0) {
-        perror("[Server] Player 02 : listen() failed.\n");
+        pstderr("Player 02 : listen() failed.\n");
         exit(EXIT_FAILURE);
     }
 
-    printf("[Server] Waiting for players to connect...\n");
+    pstdout("Waiting for players to connect...");
 
     conn_fd_01 = accept(listen_fd_01, (struct sockaddr *)&address_01, (socklen_t*)&address_01_len);
     if (conn_fd_01 < 0) {
-        perror("[Server] Player 01: accept() failed.\n");
+        pstderr("[Server] Player 01: accept() failed.");
         end_game(&conn_fd_01, &conn_fd_02, &listen_fd_01, &listen_fd_02);
         exit(EXIT_FAILURE);
     }
-    printf("[Server] Player 01: accept() success.\n");
+    pstdout("Player 01: accept() success.");
 
     conn_fd_02 = accept(listen_fd_02, (struct sockaddr *)&address_02, (socklen_t*)&address_02_len);
     if (conn_fd_02 < 0) {
-        perror("[Server] Player 02: accept() failed.\n");
+        pstderr("[Server] Player 02: accept() failed.");
         end_game(&conn_fd_01, &conn_fd_02, &listen_fd_01, &listen_fd_02);
         exit(EXIT_FAILURE);
     }
-    printf("[Server] Player 02: accept() success.\n");
+    pstdout("Player 02: accept() success.");
 
-    printf("[Server] Ready to play Battleship!\n");
+    pstdout("Ready to play Battleship!");
 
     // End Server Setup **************************************************************
 
@@ -161,7 +178,8 @@ int main() {
                 if (width >= 10 && height >= 10) {
                     player_01_ready = true;
                     send_response(conn_fd_01, "A");
-                } else {
+                } 
+                else {
                     send_response(conn_fd_01, INVALID_BEGIN_PACKET_TYPE_INVALID_PARAMETERS);
                 }
             } 
@@ -191,7 +209,7 @@ int main() {
         }
 
         if (player_01_ready && player_02_ready) {
-            printf("Both Players are Ready!\n");
+            pstdout("Both Players are Ready!");
             break;
         }
     }
@@ -210,16 +228,82 @@ void read_from_player_socket(int socket_fd, char *buffer) {
 
     int nbytes = read(socket_fd, buffer, BUFFER_SIZE);
     if (nbytes <= 0) {
-        printf("[Server] Socket read error.\n");
+        pstdout("Socket read error.\n");
         close(socket_fd);
         exit(EXIT_FAILURE);
     }
     else {
-        printf("[Server] Received: %s\n", buffer);
+        pstdout("read_from_player_socket(): Received: %s", buffer);
     }
 }
 
+// width is the number of cols, and height is number of rows
+bool initialize_board(int width, int height, Board *board) {
+    board->pieces_remaining = 5;
+    board->width = width;
+    board->height = height;
+
+    board->board = malloc(board->height * sizeof(int*));
+    if (board->board == NULL) {
+        pstderr("initialize_board(): Error malloc'ing rows for board.");
+        return false;
+    }
+
+    for (unsigned int i = 0; i < board->height; i++) {
+        board->board[i] = malloc(board->width * sizeof(int));
+        if (board->board[i] == NULL) {
+            pstderr("initialize_board(): Error malloc'ing cols for a row in board.");
+            for (unsigned int j = 0; j < i; j++) {
+                free(board->board[j]);
+            }
+            free(board->board);
+            return false;
+        }
+    }
+
+    return true;
+}
+
+bool delete_board(Board *board) {
+    if (board == NULL || board->board == NULL) {
+        printf("delete_board(): board is NULL.");
+        return false;
+    }
+
+    for (int i = 0; i < board->height; i++) {
+        free(board->board[i]);
+    }
+
+    free(board->board);
+
+    board->board = NULL;
+    board->pieces_remaining = 0;
+    board->width = 0;
+    board->height = 0;
+
+    return true; // Indicate successful deletion
+}
+
+void pstdout(const char *format, ...) {
+    va_list args;
+    va_start(args, format);
+    printf("[Server] ");
+    vprintf(format, args);
+    printf("\n");
+    va_end(args);
+}
+
+void pstderr(const char *format, ...) {
+    va_list args;
+    va_start(args, format);
+    fprintf(stderr, "[Server] ");
+    vfprintf(stderr, format, args);
+    fprintf(stderr, "\n");
+    va_end(args);
+}
+
 void end_game(int *conn_fd_01, int *conn_fd_02, int *listen_fd_01, int *listen_fd_02) {
+    // free board memory
     close(*conn_fd_01);
     close(*conn_fd_02);
     close(*listen_fd_01);
