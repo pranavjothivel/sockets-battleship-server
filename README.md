@@ -42,4 +42,5 @@ Pranav Jothivel
 - [ ] Implement shot response
 - [ ] Implement shapes and rotations
 - [ ] Implement PlayerSocketConnection
+- [ ] Update launch target for automated testings
 - [ ] Simplify end_game logic
