@@ -39,6 +39,7 @@
 
 typedef struct Board {
     int pieces_remaining;
+    bool initialized;
     int width;
     int height;
     int **board;
@@ -65,7 +66,7 @@ typedef struct Player {
 // Function declarations
 
 void read_from_player_socket(int socket_fd, char *buffer);
-char get_first_token_from_buffer(const char *buffer);
+char* get_first_token_from_buffer(const char *buffer);
 Player* initialize_player(int number, bool ready);
 void delete_player(Player *player);
 bool is_player_ready(Player *player);
@@ -74,6 +75,7 @@ bool delete_board(Board *board);
 void pstdout(const char *format, ...);
 void pstderr(const char *format, ...);
 void send_response(int conn_fd, const char *error);
+void send_shot_response(int conn_fd, int remaining_ships, const char miss_or_hit);
 void end_game(int *conn_fd_01, int *conn_fd_02, int *listen_fd_01, int *listen_fd_02);
 
 // player  pointers
@@ -175,9 +177,9 @@ int main() {
         while (is_player_ready(player_01) == false) {
             read_from_player_socket(conn_fd_01, buffer);
             
-            char token = get_first_token_from_buffer(buffer);
+            char* token = get_first_token_from_buffer(buffer);
             int width, height, extraneous_input;
-            switch (token) {
+            switch (*token) {
                 case 'B':
                     if (sscanf(buffer, "B %d %d %d", &width, &height, &extraneous_input) == 2 && width >= 10 && height >= 10) {
                         Board *board01 = initialize_board(width, height);
@@ -188,30 +190,31 @@ int main() {
                         player_01->ready = true;
                         pstdout("Player 01 is ready to begin!");
                         send_response(conn_fd_01, ACK);
-                        break;
                     }
                     else {
                         send_response(conn_fd_01, INVALID_BEGIN_PACKET_TYPE_INVALID_PARAMETERS);
-                        break;
                     }
+                    break;
                 case 'F':
                     send_response(conn_fd_01, HALT_LOSS);
                     send_response(conn_fd_02, HALT_WIN);
                     end_game(&conn_fd_01, &conn_fd_02, &listen_fd_01, &listen_fd_02);
+                    free(token);
                     exit(EXIT_SUCCESS);
                 default:
                     send_response(conn_fd_01, INVALID_PACKET_TYPE_EXPECTED_BEGIN);
                     break;
             }
+            free(token);
         }
 
         while (is_player_ready(player_02) == false) {
             read_from_player_socket(conn_fd_02, buffer);
             
-            char token = get_first_token_from_buffer(buffer);
+            char *token = get_first_token_from_buffer(buffer);
             int extraneous_input;
 
-            switch (token) {
+            switch (*token) {
                 case 'B':
                     if (sscanf(buffer, "B %d", &extraneous_input) == 1) {
                         send_response(conn_fd_02, INVALID_BEGIN_PACKET_TYPE_INVALID_PARAMETERS);
@@ -226,12 +229,14 @@ int main() {
                 case 'F':
                     send_response(conn_fd_02, HALT_LOSS);
                     send_response(conn_fd_01, HALT_WIN);
+                    free(token);
                     end_game(&conn_fd_01, &conn_fd_02, &listen_fd_01, &listen_fd_02);
                     exit(EXIT_SUCCESS);
                 default:
                     send_response(conn_fd_02, INVALID_PACKET_TYPE_EXPECTED_BEGIN);
                     break;
             }
+            free(token);
         }
         
         // main game logic goes here with board, rotations, and everything 
@@ -260,8 +265,14 @@ void send_response(int conn_fd, const char *packet) {
     send(conn_fd, packet, strlen(packet), 0);
 }
 
-void send_shot_response(int conn_fd, int remaining_ships, const char* miss_or_hit) {
-
+void send_shot_response(int conn_fd, int remaining_ships, const char miss_or_hit) {
+    if (miss_or_hit != 'M' || miss_or_hit != 'H') {
+        pstderr("send_shot_response(): 'miss_or_hit' input is invalid!");
+        return;
+    }
+    char response[BUFFER_SIZE];
+    snprintf(response, sizeof(response), "R %d %s", remaining_ships, miss_or_hit);
+    send(conn_fd, response, strlen(response), 0);
 }
 
 void read_from_player_socket(int socket_fd, char *buffer) {
@@ -278,40 +289,21 @@ void read_from_player_socket(int socket_fd, char *buffer) {
     }
 }
 
-char get_first_token_from_buffer(const char *buffer) {
+// token is a pointer, need to 'free' it
+char* get_first_token_from_buffer(const char *buffer) {
     char *buffer_cpy = strdup(buffer);
     if (buffer_cpy == NULL) {
-        return '\0';
+        return NULL;
     }
 
     char *token = strtok(buffer_cpy, " ");
     if (token == NULL) {
         free(buffer_cpy);
-        return '\0';
+        return NULL;
     }
 
-    bool is_num = true;
-    for (int i = 0; token[i] != '\0'; i++) {
-        if (!isdigit((unsigned char)token[i])) {
-            is_num = false;
-            break;
-        }
-    }
-
-    char result;
-    if (is_num) {
-        int num = atoi(token);
-        if (num >= 0 && num <= 127) {
-            result = (char)num;
-        } 
-        else {
-            result = '\0';
-        }
-    }
-    else {
-        result = token[0];
-    }
-
+    char *result = strdup(token);
+    
     free(buffer_cpy);
     return result;
 }
@@ -349,6 +341,7 @@ Board* initialize_board(int width, int height) {
     board->pieces_remaining = 5;
     board->width = width;
     board->height = height;
+    board->initialized = false;
 
     board->board = malloc(board->height * sizeof(int*));
     if (board->board == NULL) {
@@ -389,6 +382,7 @@ bool delete_board(Board *board) {
     board->pieces_remaining = 0;
     board->width = 0;
     board->height = 0;
+    board->initialized = false;
 
     return true; // Indicate successful deletion
 }
