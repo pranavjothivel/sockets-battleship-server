@@ -11,6 +11,7 @@
 #define PLAYER01_PORT 2201
 #define PLAYER02_PORT 2202
 #define BUFFER_SIZE 1024
+#define MAX_PIECES 5
 
 // server responses
 
@@ -59,6 +60,15 @@ typedef struct Player {
     PlayerSocketConnection *socket;
 } Player;
 
+// format: <Piece_type Piece_rotation Piece_column Piece_row>
+typedef struct Piece {
+    // ranges from 1 to 7
+    int type;
+    int rotation;
+    int row;
+    int col;
+} Piece;
+
 
 // Function declarations
 
@@ -76,6 +86,7 @@ void send_shot_response(int conn_fd, int remaining_ships, const char miss_or_hit
 void end_game(void);
 PlayerSocketConnection* initialize_socket_connection(int port);
 int accept_player_connection(PlayerSocketConnection *player_socket);
+void game_process_player_board_initialize(char *buffer, int player_number);
 
 // player pointers
 
@@ -186,11 +197,18 @@ int main() {
             free(token);
         }
         
-        // main game logic goes here with board, rotations, and everything 
         if (is_player_ready(player_01) && is_player_ready(player_02)) {
             pstdout("Both Players are Ready!");
-            break;
         }
+
+        while (player_01->board->initialized == false) {
+            game_process_player_board_initialize(buffer, 1);
+        }
+
+        while (player_02->board->initialized == false) {
+            game_process_player_board_initialize(buffer, 2);
+        }
+        break;
     }
 
     return EXIT_SUCCESS;
@@ -238,7 +256,7 @@ PlayerSocketConnection* initialize_socket_connection(int port) {
         free(player_socket);
         return NULL;
     }
-    
+
     return player_socket;
 }
 
@@ -266,13 +284,99 @@ void read_from_player_socket(int socket_fd, char *buffer) {
 
     int nbytes = read(socket_fd, buffer, BUFFER_SIZE);
     if (nbytes <= 0) {
-        pstdout("Socket read error.\n");
-        close(socket_fd);
+        pstdout("Socket read error.");
         exit(EXIT_FAILURE);
     }
     else {
         pstdout("read_from_player_socket(): Received: %s", buffer);
     }
+}
+
+void game_process_player_board_initialize(char *buffer, int player_number) {
+    Player *player = player_number == 1 ? player_01 : player_02;
+    Player *other_player = player_number == 1 ? player_02 : player_01;
+
+    read_from_player_socket(player->socket->connection_fd, buffer);
+
+    char *token = get_first_token_from_buffer(buffer);
+    if (token == NULL) {
+        pstderr("game_process_player_board_initialize(): Failed to get token from buffer.");
+        send_response(player->socket->connection_fd, INVALID_INITIALIZE_PACKET_TYPE_INVALID_PARAMETERS);
+        return;
+    }
+
+    Piece* pieces = malloc(MAX_PIECES * sizeof(Piece));
+    if (pieces == NULL) {
+        pstderr("game_process_player_board_initialize(): malloc for 'pieces' FAILED.");
+        free(token);
+        exit(EXIT_FAILURE);
+    }
+
+    int count = 0;
+    int type, rotation, col, row;
+    switch (*token) {
+        case 'I':
+            buffer += 2;
+
+            while (sscanf(buffer, "%d %d %d %d", &type, &rotation, &col, &row) == 4) {
+                if (count >= 20) {
+                    pstderr("game_process_player_board_initialize(): Too many pieces!");
+                    send_response(player->socket->connection_fd, INVALID_INITIALIZE_PACKET_TYPE_INVALID_PARAMETERS);
+                    return;
+                }
+
+                pieces[count % 4].type = type;
+                pieces[count % 4].rotation = rotation;
+                pieces[count % 4].col = col;
+                pieces[count % 4].row = row;
+
+                count += 4;
+
+                // move buffer pointer to the next int
+                for (int i = 0; i < 4; i++) {
+                    while (*buffer && *buffer != ' ') {
+                        buffer++;
+                    }
+                    while (*buffer == ' ') {
+                        buffer++;
+                    }
+                }
+            }
+
+            pstdout("Count for Player %d is %d", player_number, count);
+
+            int extraneous_input = 0;
+
+            if (sscanf(buffer, "%d", &extraneous_input) == 1) {
+                pstderr("game_process_player_board_initialize(): Invalid initialize parameters!");
+                send_response(player->socket->connection_fd, INVALID_INITIALIZE_PACKET_TYPE_INVALID_PARAMETERS);
+                return;
+            }
+
+            if (count != 20) {
+                pstderr("game_process_player_board_initialize(): Invalid initialize parameters!");
+                send_response(player->socket->connection_fd, INVALID_INITIALIZE_PACKET_TYPE_INVALID_PARAMETERS);
+                return;
+            } 
+            else if (count == 20) {
+                // TODO: shapes and bounds checking
+                send_response(player->socket->connection_fd, "REACHED TODO");
+                player->board->initialized = true;
+            }
+            break;
+        case 'F':
+            send_response(player->socket->connection_fd, HALT_LOSS);
+            send_response(other_player->socket->connection_fd, HALT_WIN);
+            free(token);
+            free(pieces);
+            exit(EXIT_SUCCESS);
+        default:
+            send_response(player->socket->connection_fd, INVALID_PACKET_TYPE_EXPECTED_INITIALIZE);
+            break;
+    }
+
+    free(token);
+    free(pieces);
 }
 
 // token is a pointer, need to 'free' it
@@ -413,6 +517,7 @@ void pstderr(const char *format, ...) {
 }
 
 void end_game(void) {
+    pstdout("Ending game...");
     if (player_01 != NULL) {
         delete_player(player_01);
         player_01 = NULL;
