@@ -24,7 +24,7 @@
         {
             "label": "Run Interactive Player 2",
             "type": "shell",
-            "command": "./build_scripts/run_interactive.sh",
+            "command": "sleep 0.5 && ./build_scripts/run_interactive.sh",
             "problemMatcher": [],
             "presentation": {
                 "group": "groupA",
@@ -34,7 +34,7 @@
         {
             "label": "Run Automated Player 1",
             "type": "shell",
-            "command": "./build_scripts/player_automated.sh",
+            "command": "sleep 10 && ./build_scripts/player_automated.sh",
             "args": [
                 "${input:player1Arg}"
             ],
@@ -47,7 +47,7 @@
         {
             "label": "Run Automated Player 2",
             "type": "shell",
-            "command": "./build_scripts/player_automated.sh",
+            "command": "sleep 10 && ./build_scripts/player_automated.sh",
             "args": [
                 "${input:player2Arg}"
             ],
