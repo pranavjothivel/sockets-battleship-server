@@ -44,21 +44,19 @@ typedef struct Board {
     int **board;
 } Board;
 
-
-// TODO: later, make player sockets into their own structs
-// typedef struct PlayerSocketConnection {
-//     int connection_fd;
-//     int listen_fd;
-//     struct sockaddr_in address;
-//     socklen_t address_len;
-//     int port;
-// } PlayerSocketConnection;
+typedef struct PlayerSocketConnection {
+    int connection_fd;
+    int listen_fd;
+    struct sockaddr_in address;
+    socklen_t address_len;
+    int port;
+} PlayerSocketConnection;
 
 typedef struct Player {
     int number;
     bool ready;
     Board *board;
-    //PlayerSocketConnection *socket;
+    PlayerSocketConnection *socket;
 } Player;
 
 
@@ -75,91 +73,48 @@ void pstdout(const char *format, ...);
 void pstderr(const char *format, ...);
 void send_response(int conn_fd, const char *error);
 void send_shot_response(int conn_fd, int remaining_ships, const char miss_or_hit);
-void end_game(int *conn_fd_01, int *conn_fd_02, int *listen_fd_01, int *listen_fd_02);
+void end_game(void);
+PlayerSocketConnection* initialize_socket_connection(int port);
+int accept_player_connection(PlayerSocketConnection *player_socket);
 
-// player  pointers
+// player pointers
+
 Player *player_01 = NULL;
 Player *player_02 = NULL;
 
 int main() {
+    // register end_game() to be called at program exit - no need to manually call end_game now
+    atexit(end_game);
+
     // ********************* Begin Server Setup ***************************
     // DO NOT TOUCH SOCKET SETUP!!
     // Game server setup on ports 2201 and 2202
 
-    int conn_fd_01, conn_fd_02;
-    int listen_fd_01, listen_fd_02;
-    struct sockaddr_in address_01, address_02;
-    int opt = 1;
-    int address_01_len = sizeof(address_01);
-    int address_02_len = sizeof(address_02);
-
     char buffer[BUFFER_SIZE] = {0};
 
-    if ((listen_fd_01 = socket(AF_INET, SOCK_STREAM, 0)) == 0) {
-        pstderr("Socket for Player 01 FAILED.");
-        exit(EXIT_FAILURE);
-    }
-    if ((listen_fd_02 = socket(AF_INET, SOCK_STREAM, 0)) == 0) {
-        pstderr("Socket for Player 02 FAILED.");
-        exit(EXIT_FAILURE);
-    }
+    player_01 = initialize_player(1, false);
+    player_02 = initialize_player(2, false);
 
-    if (setsockopt(listen_fd_01, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt)) ||
-        setsockopt(listen_fd_02, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt))) {
-        pstderr("setsockopt(..., SO_REUSEADDR, ...) failed for a player port.");
-        exit(EXIT_FAILURE);
-    }
+    player_01->socket = initialize_socket_connection(PLAYER01_PORT);
+    player_02->socket = initialize_socket_connection(PLAYER02_PORT);
 
-    // zero out address pointers
-    memset(&address_01, 0, sizeof(address_01));
-    memset(&address_02, 0, sizeof(address_02));
-
-    address_01.sin_family = AF_INET;
-    address_01.sin_addr.s_addr = INADDR_ANY;
-    address_01.sin_port = htons(PLAYER01_PORT);
-
-    address_02.sin_family = AF_INET;
-    address_02.sin_addr.s_addr = INADDR_ANY;
-    address_02.sin_port = htons(PLAYER02_PORT);
-
-    // bind sockets
-    if (bind(listen_fd_01, (struct sockaddr *)&address_01, sizeof(address_01)) < 0) {
-        pstderr("Player 01 : bind() failed.\n");
-        exit(EXIT_FAILURE);
-    }
-    if (bind(listen_fd_02, (struct sockaddr *)&address_02, sizeof(address_02)) < 0) {
-        pstderr("Player 02 : bind() failed.\n");
-        exit(EXIT_FAILURE);
-    }
-
-    // listen for connections
-    if (listen(listen_fd_01, 3) < 0) {
-        pstderr("Player 01 : listen() failed.\n");
-        exit(EXIT_FAILURE);
-    }
-    if (listen(listen_fd_02, 3) < 0) {
-        pstderr("Player 02 : listen() failed.\n");
+    if (player_01->socket == NULL || player_02->socket == NULL) {
+        pstderr("Failed to initialize player sockets.");
         exit(EXIT_FAILURE);
     }
 
     pstdout("Waiting for players to connect...");
 
-    conn_fd_01 = accept(listen_fd_01, (struct sockaddr *)&address_01, (socklen_t*)&address_01_len);
-    if (conn_fd_01 < 0) {
+    if (accept_player_connection(player_01->socket) < 0) {
         pstderr("[Server] Player 01: accept() failed.");
-        end_game(&conn_fd_01, &conn_fd_02, &listen_fd_01, &listen_fd_02);
         exit(EXIT_FAILURE);
     }
-    player_01 = initialize_player(1, false);
     pstdout("Player 01: accept() success.");
 
-    conn_fd_02 = accept(listen_fd_02, (struct sockaddr *)&address_02, (socklen_t*)&address_02_len);
-    if (conn_fd_02 < 0) {
+    if (accept_player_connection(player_02->socket) < 0) {
         pstderr("[Server] Player 02: accept() failed.");
-        end_game(&conn_fd_01, &conn_fd_02, &listen_fd_01, &listen_fd_02);
         exit(EXIT_FAILURE);
     }
-    player_02 = initialize_player(2, false);
     pstdout("Player 02: accept() success.");
 
     pstdout("Ready to play Battleship!");
@@ -169,7 +124,7 @@ int main() {
     // ************************** Server -> Main Game Loop **********************************
     while (true) {
         while (is_player_ready(player_01) == false) {
-            read_from_player_socket(conn_fd_01, buffer);
+            read_from_player_socket(player_01->socket->connection_fd, buffer);
             
             char* token = get_first_token_from_buffer(buffer);
             int width, height, extraneous_input;
@@ -183,27 +138,26 @@ int main() {
 
                         player_01->ready = true;
                         pstdout("Player 01 is ready to begin!");
-                        send_response(conn_fd_01, ACK);
+                        send_response(player_01->socket->connection_fd, ACK);
                     }
                     else {
-                        send_response(conn_fd_01, INVALID_BEGIN_PACKET_TYPE_INVALID_PARAMETERS);
+                        send_response(player_01->socket->connection_fd, INVALID_BEGIN_PACKET_TYPE_INVALID_PARAMETERS);
                     }
                     break;
                 case 'F':
-                    send_response(conn_fd_01, HALT_LOSS);
-                    send_response(conn_fd_02, HALT_WIN);
-                    end_game(&conn_fd_01, &conn_fd_02, &listen_fd_01, &listen_fd_02);
+                    send_response(player_01->socket->connection_fd, HALT_LOSS);
+                    send_response(player_02->socket->connection_fd, HALT_WIN);
                     free(token);
                     exit(EXIT_SUCCESS);
                 default:
-                    send_response(conn_fd_01, INVALID_PACKET_TYPE_EXPECTED_BEGIN);
+                    send_response(player_01->socket->connection_fd, INVALID_PACKET_TYPE_EXPECTED_BEGIN);
                     break;
             }
             free(token);
         }
 
         while (is_player_ready(player_02) == false) {
-            read_from_player_socket(conn_fd_02, buffer);
+            read_from_player_socket(player_02->socket->connection_fd, buffer);
             
             char *token = get_first_token_from_buffer(buffer);
             int extraneous_input;
@@ -211,23 +165,22 @@ int main() {
             switch (*token) {
                 case 'B':
                     if (sscanf(buffer, "B %d", &extraneous_input) == 1) {
-                        send_response(conn_fd_02, INVALID_BEGIN_PACKET_TYPE_INVALID_PARAMETERS);
+                        send_response(player_02->socket->connection_fd, INVALID_BEGIN_PACKET_TYPE_INVALID_PARAMETERS);
                         break;
                     }
                     else {
                         player_02->ready = true;
                         pstdout("Player 02 is ready to begin!");
-                        send_response(conn_fd_02, ACK);
+                        send_response(player_02->socket->connection_fd, ACK);
                         break;
                     }
                 case 'F':
-                    send_response(conn_fd_02, HALT_LOSS);
-                    send_response(conn_fd_01, HALT_WIN);
+                    send_response(player_02->socket->connection_fd, HALT_LOSS);
+                    send_response(player_01->socket->connection_fd, HALT_WIN);
                     free(token);
-                    end_game(&conn_fd_01, &conn_fd_02, &listen_fd_01, &listen_fd_02);
                     exit(EXIT_SUCCESS);
                 default:
-                    send_response(conn_fd_02, INVALID_PACKET_TYPE_EXPECTED_BEGIN);
+                    send_response(player_02->socket->connection_fd, INVALID_PACKET_TYPE_EXPECTED_BEGIN);
                     break;
             }
             free(token);
@@ -236,36 +189,75 @@ int main() {
         // main game logic goes here with board, rotations, and everything 
         if (is_player_ready(player_01) && is_player_ready(player_02)) {
             pstdout("Both Players are Ready!");
-            // end_game(&conn_fd_01, &conn_fd_02, &listen_fd_01, &listen_fd_02);
-            // return EXIT_SUCCESS;
             break;
         }
     }
 
-    end_game(&conn_fd_01, &conn_fd_02, &listen_fd_01, &listen_fd_02);
     return EXIT_SUCCESS;
 }
 
-// PlayerSocketConnection* initialize_socket(int port) {
-//     PlayerSocketConnection* socket = malloc(sizeof(PlayerSocketConnection));
-//     if (socket == NULL) {
-//         pstderr("initialize_socket(): Error malloc'ing socket");
-//     }
-//     socket->port = port;
-//     return socket;
-// }
+PlayerSocketConnection* initialize_socket_connection(int port) {
+    PlayerSocketConnection* player_socket = malloc(sizeof(PlayerSocketConnection));
+
+    if (player_socket == NULL) {
+        pstderr("initialize_socket(): Error malloc'ing socket");
+        return NULL;
+    }
+
+    int opt = 1;
+
+    if ((player_socket->listen_fd = socket(AF_INET, SOCK_STREAM, 0)) == 0) {
+        pstderr("initialize_socket(): Socket for Player FAILED.");
+        free(player_socket);
+        return NULL;
+    }
+
+    if (setsockopt(player_socket->listen_fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt))) {
+        pstderr("initialize_socket(): setsockopt(..., SO_REUSEADDR, ...) failed for a player port.");
+        free(player_socket);
+        return NULL;
+    }
+    // no need to use so_reuseport as per Piazza post
+
+    player_socket->port = port;
+
+    player_socket->address.sin_family = AF_INET;
+    player_socket->address.sin_addr.s_addr = INADDR_ANY;
+    player_socket->address.sin_port = htons(port);
+
+    player_socket->address_len = sizeof(player_socket->address);
+
+    if (bind(player_socket->listen_fd, (struct sockaddr *)&player_socket->address, player_socket->address_len) < 0) {
+        pstderr("initialize_socket(): bind failed.");
+        free(player_socket);
+        return NULL;
+    }
+
+    if (listen(player_socket->listen_fd, 3) < 0) {
+        pstderr("initialize_socket(): listen failed.");
+        free(player_socket);
+        return NULL;
+    }
+    
+    return player_socket;
+}
+
+int accept_player_connection(PlayerSocketConnection *player_socket) {
+    player_socket->connection_fd = accept(player_socket->listen_fd, (struct sockaddr *)&player_socket->address, &player_socket->address_len);
+    return player_socket->connection_fd;
+}
 
 void send_response(int conn_fd, const char *packet) {
     send(conn_fd, packet, strlen(packet), 0);
 }
 
 void send_shot_response(int conn_fd, int remaining_ships, const char miss_or_hit) {
-    if (miss_or_hit != 'M' || miss_or_hit != 'H') {
+    if (miss_or_hit != 'M' && miss_or_hit != 'H') {
         pstderr("send_shot_response(): 'miss_or_hit' input is invalid!");
         return;
     }
     char response[BUFFER_SIZE];
-    snprintf(response, sizeof(response), "R %d %s", remaining_ships, miss_or_hit);
+    snprintf(response, sizeof(response), "R %d %c", remaining_ships, miss_or_hit);
     send(conn_fd, response, strlen(response), 0);
 }
 
@@ -304,20 +296,37 @@ char* get_first_token_from_buffer(const char *buffer) {
 
 Player* initialize_player(int number, bool ready) {
     Player* player = malloc(sizeof(Player));
+
     if (player == NULL) {
         pstderr("initialize_player(): Error malloc'ing player!");
         return NULL;
     }
+
     player->number = number;
     player->ready = ready;
     player->board = NULL;
+    player->socket = NULL;
+
     return player;
 }
 
 void delete_player(Player *player) {
-    delete_board(player->board);
-    free(player);
-    player == NULL;
+    if (player != NULL) {
+        if (player->board != NULL) {
+            delete_board(player->board);
+            player->board = NULL;
+        }
+
+        if (player->socket != NULL) {
+            close(player->socket->connection_fd);
+            close(player->socket->listen_fd);
+            free(player->socket);
+            player->socket = NULL;
+        }
+
+        free(player);
+        player = NULL;
+    }
 }
 
 bool is_player_ready(Player *player) {
@@ -328,16 +337,19 @@ bool is_player_ready(Player *player) {
 // width is the number of cols, and height is number of rows
 Board* initialize_board(int width, int height) {
     Board* board = malloc(sizeof(Board));
+
     if (board == NULL) {
         pstderr("initialize_board(): Error malloc'ing board.");
         return NULL;
     }
+
     board->pieces_remaining = 5;
     board->width = width;
     board->height = height;
     board->initialized = false;
 
     board->board = malloc(board->height * sizeof(int*));
+
     if (board->board == NULL) {
         pstderr("initialize_board(): Error malloc'ing rows for board.");
         free(board);
@@ -348,11 +360,13 @@ Board* initialize_board(int width, int height) {
         board->board[i] = malloc(board->width * sizeof(int));
         if (board->board[i] == NULL) {
             pstderr("initialize_board(): Error malloc'ing cols for a row in board.");
+            
             for (unsigned int j = 0; j < i; j++) {
                 free(board->board[j]);
             }
             free(board->board);
             free(board); // Free the allocated board structure
+
             return NULL;
         }
     }
@@ -371,7 +385,6 @@ bool delete_board(Board *board) {
     }
 
     free(board->board);
-
     board->board = NULL;
     board->pieces_remaining = 0;
     board->width = 0;
@@ -399,10 +412,13 @@ void pstderr(const char *format, ...) {
     va_end(args);
 }
 
-void end_game(int *conn_fd_01, int *conn_fd_02, int *listen_fd_01, int *listen_fd_02) {
-    // free board memory
-    close(*conn_fd_01);
-    close(*conn_fd_02);
-    close(*listen_fd_01);
-    close(*listen_fd_02);
+void end_game(void) {
+    if (player_01 != NULL) {
+        delete_player(player_01);
+        player_01 = NULL;
+    }
+    if (player_02 != NULL) {
+        delete_player(player_02);
+        player_02 = NULL;
+    }
 }
