@@ -95,10 +95,13 @@ int accept_player_connection(PlayerSocketConnection *player_socket);
 void game_process_player_board_initialize(char *buffer, int player_number);
 void print_board(Board *board);
 void game_process_player_play_packets(char *buffer, int player_number);
-Board* fill_board_with_0s(Board *board);
-bool is_piece_out_of_bounds(Board *board, Piece *piece);
 bool are_ships_overlapping(Board *board, Piece *pieces);
 int remaining_pieces_on_board(Board *board);
+bool is_position_out_of_bounds_on_board(Board *board, int row, int col, int final_row, int final_col);
+void fill_board_with_pieces(Board *board, Piece *pieces);
+bool fill_board_with_piece(Board *board, Piece *piece, int piece_board_identifier);
+bool fill_board_index_with_value(Board *board, int piece_row, int piece_col, int row_offset, int col_offset, int value);
+bool is_board_index_empty(Board *board, int row, int col);
 
 // player pointers
 
@@ -155,8 +158,6 @@ int main() {
                     if (sscanf(buffer, "B %d %d %d", &width, &height, &extraneous_input) == 2 && width >= 10 && height >= 10) {
                         Board *board01 = create_board(width, height);
                         Board *board02 = create_board(width, height);
-                        fill_board_with_0s(board01);
-                        fill_board_with_0s(board02);
                         player_01->board = board01;
                         player_02->board = board02;
 
@@ -238,8 +239,6 @@ int main() {
         while (player_02->play == true) {
             game_process_player_play_packets(buffer, 2);
         }
-        
-        break;
     }
 
     return EXIT_SUCCESS;
@@ -323,6 +322,16 @@ void read_from_player_socket(int socket_fd, char *buffer) {
     }
 }
 
+void handle_initialize_error_response(int conn_fd, const char *error_packet, char *token, Piece *pieces) {
+    send_response(conn_fd, error_packet);
+    if (token != NULL) {
+        free(token);
+    }
+    if (pieces != NULL) {
+        free(pieces);
+    }
+}
+
 void game_process_player_board_initialize(char *buffer, int player_number) {
     Player *player = player_number == 1 ? player_01 : player_02;
     Player *other_player = player_number == 1 ? player_02 : player_01;
@@ -332,14 +341,14 @@ void game_process_player_board_initialize(char *buffer, int player_number) {
     char *token = get_first_token_from_buffer(buffer);
     if (token == NULL) {
         pstderr("game_process_player_board_initialize(): Failed to get token from buffer.");
-        send_response(player->socket->connection_fd, INVALID_INITIALIZE_PACKET_TYPE_INVALID_PARAMETERS);
+        handle_initialize_error_response(player->socket->connection_fd, INVALID_INITIALIZE_PACKET_TYPE_INVALID_PARAMETERS, token, NULL);
         return;
     }
 
     Piece* pieces = malloc(MAX_PIECES * sizeof(Piece));
     if (pieces == NULL) {
         pstderr("game_process_player_board_initialize(): malloc for 'pieces' FAILED.");
-        free(token);
+        handle_initialize_error_response(player->socket->connection_fd, INVALID_INITIALIZE_PACKET_TYPE_INVALID_PARAMETERS, token, pieces);
         exit(EXIT_FAILURE);
     }
 
@@ -352,9 +361,7 @@ void game_process_player_board_initialize(char *buffer, int player_number) {
             while (sscanf(buffer, "%d %d %d %d", &type, &rotation, &col, &row) == 4) {
                 if (count >= MAX_PIECES) {
                     pstderr("game_process_player_board_initialize(): Too many pieces!");
-                    send_response(player->socket->connection_fd, INVALID_INITIALIZE_PACKET_TYPE_INVALID_PARAMETERS);
-                    free(token);
-                    free(pieces);
+                    handle_initialize_error_response(player->socket->connection_fd, INVALID_INITIALIZE_PACKET_TYPE_INVALID_PARAMETERS, token, pieces);
                     return;
                 }
 
@@ -380,13 +387,13 @@ void game_process_player_board_initialize(char *buffer, int player_number) {
             
             int extraneous_parameter;
             if (sscanf(buffer, "%d", &extraneous_parameter) == 1) {
-                send_response(player->socket->connection_fd, INVALID_INITIALIZE_PACKET_TYPE_INVALID_PARAMETERS);
+                handle_initialize_error_response(player->socket->connection_fd, INVALID_INITIALIZE_PACKET_TYPE_INVALID_PARAMETERS, token, pieces);
                 break;
             }
 
             if (count != MAX_PIECES) {
                 pstderr("game_process_player_board_initialize(): Invalid initialize parameters!");
-                send_response(player->socket->connection_fd, INVALID_INITIALIZE_PACKET_TYPE_INVALID_PARAMETERS);
+                handle_initialize_error_response(player->socket->connection_fd, INVALID_INITIALIZE_PACKET_TYPE_INVALID_PARAMETERS, token, pieces);
             } 
             else {
                 pstdout("game_process_player_board_initialize(): valid initialize parameters, checking for errors 300-303...");
@@ -401,9 +408,7 @@ void game_process_player_board_initialize(char *buffer, int player_number) {
                     // error 300
                     if (pieces[i].type < 1 || pieces[i].type > 7) {
                         pstderr("E 300 for type %d for piece %d", pieces[i].type, i);
-                        send_response(player->socket->connection_fd, INVALID_INITIALIZE_PACKET_SHAPE_OUT_OF_RANGE);
-                        free(token);
-                        free(pieces);
+                        handle_initialize_error_response(player->socket->connection_fd, INVALID_INITIALIZE_PACKET_SHAPE_OUT_OF_RANGE, token, pieces);
                         return;
                     } 
                 }
@@ -412,38 +417,238 @@ void game_process_player_board_initialize(char *buffer, int player_number) {
                     // error 301
                     if (pieces[i].rotation < 1 || pieces[i].rotation > 4) {
                         pstderr("E 301 for rotation %d for piece %d", pieces[i].rotation, i);
-                        send_response(player->socket->connection_fd, INVALID_INITIALIZE_PACKET_ROTATION_OUT_OF_RANGE);
-                        free(token);
-                        free(pieces);
+                        handle_initialize_error_response(player->socket->connection_fd, INVALID_INITIALIZE_PACKET_ROTATION_OUT_OF_RANGE, token, pieces);
                         return;
                     }
                 }
 
+                // error 302
                 for (int i = 0; i < MAX_PIECES; i++) {
-                    // error 302
-                    if (is_piece_out_of_bounds(player->board, &pieces[i])) {
-                        pstderr("E 302 for piece %d", i);
-                        send_response(player->socket->connection_fd, INVALID_INITIALIZE_PACKET_SHIP_DOES_NOT_FIT);
-                        free(token);
-                        free(pieces);
-                        return;
+                    Piece *piece = &pieces[i];
+                    int piece_type = piece->type;
+                    int piece_rotation = piece->rotation;
+                    
+                    // shape 1 - all rotations
+                    if (piece_type == 1) {
+                        if (is_position_out_of_bounds_on_board(player->board, piece->row, piece->col, 0, 0) &&
+                            is_position_out_of_bounds_on_board(player->board, piece->row, piece->col, 0, 1) &&
+                            is_position_out_of_bounds_on_board(player->board, piece->row, piece->col, 1, 0) &&
+                            is_position_out_of_bounds_on_board(player->board, piece->row, piece->col, 1, 1)) {
+                            handle_initialize_error_response(player->socket->connection_fd, INVALID_INITIALIZE_PACKET_SHIP_DOES_NOT_FIT, token, pieces);
+                            return;
+                        }   
+                    }
+                    // shape 2
+                    else if (piece_type == 2) {
+                        // rotations 1 and 3
+                        if (piece_rotation == 1 || piece_rotation == 3) {
+                            if (is_position_out_of_bounds_on_board(player->board, piece->row, piece->col, 0, 0) ||
+                                is_position_out_of_bounds_on_board(player->board, piece->row, piece->col, 1, 0) ||
+                                is_position_out_of_bounds_on_board(player->board, piece->row, piece->col, 2, 0) ||
+                                is_position_out_of_bounds_on_board(player->board, piece->row, piece->col, 3, 0)) {
+                                handle_initialize_error_response(player->socket->connection_fd, INVALID_INITIALIZE_PACKET_SHIP_DOES_NOT_FIT, token, pieces);
+                                return;
+                            }
+                        }
+                        // rotations 2 and 4
+                        else if (piece_rotation == 2 || piece_rotation == 4) {
+                            if (is_position_out_of_bounds_on_board(player->board, piece->row, piece->col, 0, 0) ||
+                                is_position_out_of_bounds_on_board(player->board, piece->row, piece->col, 0, 1) ||
+                                is_position_out_of_bounds_on_board(player->board, piece->row, piece->col, 0, 2) ||
+                                is_position_out_of_bounds_on_board(player->board, piece->row, piece->col, 0, 3)) {
+                                handle_initialize_error_response(player->socket->connection_fd, INVALID_INITIALIZE_PACKET_SHIP_DOES_NOT_FIT, token, pieces);
+                                return;
+                            }
+                        }  
+                    }
+                    // shape 3
+                    else if (piece_type == 3) {
+                        // rotations 1 and 3
+                        if (piece_rotation == 1 || piece_rotation == 3) {
+                            if (is_position_out_of_bounds_on_board(player->board, piece->row, piece->col, 0, 0) ||
+                                is_position_out_of_bounds_on_board(player->board, piece->row, piece->col, 0, 1) ||
+                                is_position_out_of_bounds_on_board(player->board, piece->row, piece->col, -1, 1) ||
+                                is_position_out_of_bounds_on_board(player->board, piece->row, piece->col, -1, 2)) {
+                                handle_initialize_error_response(player->socket->connection_fd, INVALID_INITIALIZE_PACKET_SHIP_DOES_NOT_FIT, token, pieces);
+                                return;
+                            }
+                        }
+                        // rotations 2 and 4
+                        else if (piece_rotation== 2 || piece_rotation == 4) {
+                            if (is_position_out_of_bounds_on_board(player->board, piece->row, piece->col, 0, 0) ||
+                                is_position_out_of_bounds_on_board(player->board, piece->row, piece->col, 1, 0) ||
+                                is_position_out_of_bounds_on_board(player->board, piece->row, piece->col, 1, 1) ||
+                                is_position_out_of_bounds_on_board(player->board, piece->row, piece->col, 2, 1)) {
+                                handle_initialize_error_response(player->socket->connection_fd, INVALID_INITIALIZE_PACKET_SHIP_DOES_NOT_FIT, token, pieces);
+                                return;
+                            }
+                        }
+                    }
+                    // shape 4
+                    else if (piece_type == 4) {
+                        // rotation 1
+                        if (piece_rotation == 1) {
+                            if (is_position_out_of_bounds_on_board(player->board, piece->row, piece->col, 0, 0) ||
+                                is_position_out_of_bounds_on_board(player->board, piece->row, piece->col, 1, 0) ||
+                                is_position_out_of_bounds_on_board(player->board, piece->row, piece->col, 2, 0) ||
+                                is_position_out_of_bounds_on_board(player->board, piece->row, piece->col, 2, 1)) {
+                                handle_initialize_error_response(player->socket->connection_fd, INVALID_INITIALIZE_PACKET_SHIP_DOES_NOT_FIT, token, pieces);
+                                return;
+                            }
+                        }
+                        // rotation 2
+                        else if (piece_rotation == 2) {
+                            if (is_position_out_of_bounds_on_board(player->board, piece->row, piece->col, 0, 0) ||
+                                is_position_out_of_bounds_on_board(player->board, piece->row, piece->col, 0, 1) ||
+                                is_position_out_of_bounds_on_board(player->board, piece->row, piece->col, 0, 2) ||
+                                is_position_out_of_bounds_on_board(player->board, piece->row, piece->col, 1, 0)) {
+                                handle_initialize_error_response(player->socket->connection_fd, INVALID_INITIALIZE_PACKET_SHIP_DOES_NOT_FIT, token, pieces);
+                                return;
+                            }
+                        }
+                        // rotation 3
+                        else if (piece_rotation == 3) {
+                            if (is_position_out_of_bounds_on_board(player->board, piece->row, piece->col, 0, 0) ||
+                                is_position_out_of_bounds_on_board(player->board, piece->row, piece->col, 0, 1) ||
+                                is_position_out_of_bounds_on_board(player->board, piece->row, piece->col, 1, 1) ||
+                                is_position_out_of_bounds_on_board(player->board, piece->row, piece->col, 2, 1)) {
+                                handle_initialize_error_response(player->socket->connection_fd, INVALID_INITIALIZE_PACKET_SHIP_DOES_NOT_FIT, token, pieces);
+                                return;
+                            }
+                        }
+                        // rotation 4
+                        else if (piece_rotation == 4) {
+                            if (is_position_out_of_bounds_on_board(player->board, piece->row, piece->col, 0, 0) ||
+                                is_position_out_of_bounds_on_board(player->board, piece->row, piece->col, 0, 1) ||
+                                is_position_out_of_bounds_on_board(player->board, piece->row, piece->col, 0, 2) ||
+                                is_position_out_of_bounds_on_board(player->board, piece->row, piece->col, -1, 2)) {
+                                handle_initialize_error_response(player->socket->connection_fd, INVALID_INITIALIZE_PACKET_SHIP_DOES_NOT_FIT, token, pieces);
+                                return;
+                            }
+                        }
+                    }
+                    // shape 5
+                    else if (piece_type == 5) {
+                        // rotations 1 and 3
+                        if (piece_rotation == 1 || piece_rotation == 3) {
+                            if (is_position_out_of_bounds_on_board(player->board, piece->row, piece->col, 0, 0) ||
+                                is_position_out_of_bounds_on_board(player->board, piece->row, piece->col, 0, 1) ||
+                                is_position_out_of_bounds_on_board(player->board, piece->row, piece->col, 1, 1) ||
+                                is_position_out_of_bounds_on_board(player->board, piece->row, piece->col, 1, 2)) {
+                                handle_initialize_error_response(player->socket->connection_fd, INVALID_INITIALIZE_PACKET_SHIP_DOES_NOT_FIT, token, pieces);
+                                return;
+                            }
+                        }
+                        // rotations 2 and 4
+                        else if (piece_rotation == 2 || piece_rotation == 4) {
+                            if (is_position_out_of_bounds_on_board(player->board, piece->row, piece->col, 0, 0) ||
+                                is_position_out_of_bounds_on_board(player->board, piece->row, piece->col, 1, 0) ||
+                                is_position_out_of_bounds_on_board(player->board, piece->row, piece->col, 0, 1) ||
+                                is_position_out_of_bounds_on_board(player->board, piece->row, piece->col, -1, 1)) {
+                                handle_initialize_error_response(player->socket->connection_fd, INVALID_INITIALIZE_PACKET_SHIP_DOES_NOT_FIT, token, pieces);
+                                return;
+                            }
+                        }
+                    }
+                    // shape 6
+                    else if (piece_type == 6) {
+                        // rotation 1
+                        if (piece_rotation == 1) {
+                            if (is_position_out_of_bounds_on_board(player->board, piece->row, piece->col, 0, 0) ||
+                                is_position_out_of_bounds_on_board(player->board, piece->row, piece->col, 0, 1) ||
+                                is_position_out_of_bounds_on_board(player->board, piece->row, piece->col, -1, 1) ||
+                                is_position_out_of_bounds_on_board(player->board, piece->row, piece->col, -2, 1)) {
+                                handle_initialize_error_response(player->socket->connection_fd, INVALID_INITIALIZE_PACKET_SHIP_DOES_NOT_FIT, token, pieces);
+                                return;
+                            }
+                        }
+                        // rotation 2
+                        else if (piece_rotation == 2) {
+                            if (is_position_out_of_bounds_on_board(player->board, piece->row, piece->col, 0, 0) ||
+                                is_position_out_of_bounds_on_board(player->board, piece->row, piece->col, 1, 0) ||
+                                is_position_out_of_bounds_on_board(player->board, piece->row, piece->col, 1, 1) ||
+                                is_position_out_of_bounds_on_board(player->board, piece->row, piece->col, 1, 2)) {
+                                handle_initialize_error_response(player->socket->connection_fd, INVALID_INITIALIZE_PACKET_SHIP_DOES_NOT_FIT, token, pieces);
+                                return;
+                            }
+                        }
+                        // rotation 3
+                        else if (piece_rotation == 3) {
+                            if (is_position_out_of_bounds_on_board(player->board, piece->row, piece->col, 0, 0) ||
+                                is_position_out_of_bounds_on_board(player->board, piece->row, piece->col, 0, 1) ||
+                                is_position_out_of_bounds_on_board(player->board, piece->row, piece->col, 1, 0) ||
+                                is_position_out_of_bounds_on_board(player->board, piece->row, piece->col, 2, 0)) {
+                                handle_initialize_error_response(player->socket->connection_fd, INVALID_INITIALIZE_PACKET_SHIP_DOES_NOT_FIT, token, pieces);
+                                return;
+                            }
+                        }
+                        // rotation 4
+                        else if (piece_rotation == 4) {
+                            if (is_position_out_of_bounds_on_board(player->board, piece->row, piece->col, 0, 0) ||
+                                is_position_out_of_bounds_on_board(player->board, piece->row, piece->col, 0, 1) ||
+                                is_position_out_of_bounds_on_board(player->board, piece->row, piece->col, 0, 2) ||
+                                is_position_out_of_bounds_on_board(player->board, piece->row, piece->col, 1, 2)) {
+                                handle_initialize_error_response(player->socket->connection_fd, INVALID_INITIALIZE_PACKET_SHIP_DOES_NOT_FIT, token, pieces);
+                                return;
+                            }
+                        }
+                    }
+                    // shape 7
+                    else if (piece_type == 7) {
+                        // rotation 1
+                        if (piece_rotation == 1) {
+                            if (is_position_out_of_bounds_on_board(player->board, piece->row, piece->col, 0, 0) ||
+                                is_position_out_of_bounds_on_board(player->board, piece->row, piece->col, 0, 1) ||
+                                is_position_out_of_bounds_on_board(player->board, piece->row, piece->col, 0, 2) ||
+                                is_position_out_of_bounds_on_board(player->board, piece->row, piece->col, 1, 1)) {
+                                handle_initialize_error_response(player->socket->connection_fd, INVALID_INITIALIZE_PACKET_SHIP_DOES_NOT_FIT, token, pieces);
+                                return;
+                            }
+                        }
+                        // rotation 2
+                        else if (piece_rotation == 2) {
+                            if (is_position_out_of_bounds_on_board(player->board, piece->row, piece->col, 0, 0) ||
+                                is_position_out_of_bounds_on_board(player->board, piece->row, piece->col, 0, 1) ||
+                                is_position_out_of_bounds_on_board(player->board, piece->row, piece->col, -1, 1) ||
+                                is_position_out_of_bounds_on_board(player->board, piece->row, piece->col, 1, 1)) {
+                                handle_initialize_error_response(player->socket->connection_fd, INVALID_INITIALIZE_PACKET_SHIP_DOES_NOT_FIT, token, pieces);
+                                return;
+                            }
+                        }
+                        // rotation 3
+                        else if (piece_rotation == 3) {
+                            if (is_position_out_of_bounds_on_board(player->board, piece->row, piece->col, 0, 0) ||
+                                is_position_out_of_bounds_on_board(player->board, piece->row, piece->col, 0, 1) ||
+                                is_position_out_of_bounds_on_board(player->board, piece->row, piece->col, 0, 2) ||
+                                is_position_out_of_bounds_on_board(player->board, piece->row, piece->col, -1, 1)) {
+                                handle_initialize_error_response(player->socket->connection_fd, INVALID_INITIALIZE_PACKET_SHIP_DOES_NOT_FIT, token, pieces);
+                                return;
+                            }
+                        }
+                        // rotation 4
+                        else if (piece_rotation == 4) {
+                            if (is_position_out_of_bounds_on_board(player->board, piece->row, piece->col, 0, 0) ||
+                                is_position_out_of_bounds_on_board(player->board, piece->row, piece->col, 1, 0) ||
+                                is_position_out_of_bounds_on_board(player->board, piece->row, piece->col, 2, 0) ||
+                                is_position_out_of_bounds_on_board(player->board, piece->row, piece->col, 1, 1)) {
+                                handle_initialize_error_response(player->socket->connection_fd, INVALID_INITIALIZE_PACKET_SHIP_DOES_NOT_FIT, token, pieces);
+                                return;
+                            }
+                        }
                     }
                 }
 
                 // error 303
-                if (are_ships_overlapping(player->board, pieces)) {
-                        pstderr("E 303 error");
-                        send_response(player->socket->connection_fd, INVALID_INITIALIZE_PACKET_SHIPS_OVERLAP);
-                        free(token);
-                        free(pieces);
-                        return;
-                    }
+                Board *board_cpy = create_board(player->board->width, player->board->height);
+                if (are_ships_overlapping(player->board, pieces) == true) {
+                    handle_initialize_error_response(player->socket->connection_fd, INVALID_INITIALIZE_PACKET_SHIPS_OVERLAP, token, pieces);
+                    free(board_cpy);
+                    return;
+                }
 
                 // if we reach this point - there are no errors! :) 
                 
-                for (int i = 0; i < MAX_PIECES; i++) {
-                    // fill pieces into board
-                }
+                fill_board_with_pieces(player->board, pieces);
 
                 send_response(player->socket->connection_fd, ACK);
                 player->board->initialized = true;
@@ -456,12 +661,9 @@ void game_process_player_board_initialize(char *buffer, int player_number) {
             free(pieces);
             exit(EXIT_SUCCESS);
         default:
-            send_response(player->socket->connection_fd, INVALID_PACKET_TYPE_EXPECTED_INITIALIZE);
+            handle_initialize_error_response(player->socket->connection_fd, INVALID_PACKET_TYPE_EXPECTED_INITIALIZE, token, pieces);
             break;
     }
-
-    free(token);
-    free(pieces);
 }
 
 // Packets include Shoot, Query, and Forfeit
@@ -479,21 +681,37 @@ void game_process_player_play_packets(char *buffer, int player_number) {
         case 'S':
             if (sscanf(buffer, "S %d %d %d", &shoot_row, &shoot_col, &extraneous_input) == 2) {
                 // codes 400 and 401, and shooting logic
-                if (shoot_row >= other_player->board->height || shoot_col >= other_player->board->width) {
+                if (is_position_out_of_bounds_on_board(player->board, shoot_row, shoot_col, 0, 0)) {
                     send_response(player->socket->connection_fd, INVALID_SHOOT_PACKET_CELL_OUT_OF_BOUNDS);
                     break;
                 }
-                else if (other_player->board->board[shoot_row][shoot_col] == -1) {
-                   send_response(player->socket->connection_fd, INVALID_SHOOT_PACKET_CELL_ALREADY_GUESSED);
-                   break; 
+                else if (other_player->board->board[shoot_row][shoot_col] < 0) {
+                    send_response(player->socket->connection_fd, INVALID_SHOOT_PACKET_CELL_ALREADY_GUESSED);
+                    break; 
                 }
                 else {
                     char hit_or_miss = other_player->board->board[shoot_row][shoot_col] > 0 ? 'H' : 'M';
-                    other_player->board->board[shoot_row][shoot_col] == -1;
+                    if (other_player->board->board[shoot_row][shoot_col] > 0) {
+                        other_player->board->board[shoot_row][shoot_col] = -2;
+                    } 
+                    else {
+                        other_player->board->board[shoot_row][shoot_col] = -1;
+                    }
+
                     int remaining_ships = remaining_pieces_on_board(other_player->board);
+
+                    if (remaining_ships == 0) {
+                        send_shot_response(player->socket->connection_fd, remaining_ships, hit_or_miss);
+                        read_from_player_socket(player->socket->connection_fd, buffer);
+                        send_response(player->socket->connection_fd, HALT_WIN);
+                        send_response(other_player->socket->connection_fd, HALT_LOSS);
+                        free(token);
+                        exit(EXIT_SUCCESS);
+                    }
+
                     send_shot_response(player->socket->connection_fd, remaining_ships, hit_or_miss);
-                    other_player->ready = true;
-                    player->ready = false;
+                    other_player->play = true;
+                    player->play = false;
                 }
             }
             else {
@@ -503,8 +721,11 @@ void game_process_player_play_packets(char *buffer, int player_number) {
 
             break;
         case 'Q':
-            // querying logic
-            break;
+            // querying logic - placeholder code currently
+            send_response(player->socket->connection_fd, HALT_LOSS);
+            send_response(other_player->socket->connection_fd, HALT_WIN);
+            free(token);
+            exit(EXIT_SUCCESS);
         case 'F':
             send_response(player->socket->connection_fd, HALT_LOSS);
             send_response(other_player->socket->connection_fd, HALT_WIN);
@@ -613,22 +834,16 @@ Board* create_board(int width, int height) {
 
             return NULL;
         }
+
+        memset(board->board[i], 0, board->width * sizeof(int)); // this 
     }
 
-    return board;
-}
-
-Board* fill_board_with_0s(Board *board) {
-    if (board == NULL) {
-        pstderr("fill_board_with_0s(): board is NULL!");
-        return NULL;
-    }
-
-    for (int i = 0; i < board->height; i++) {
-        for (int j = 0; j < board->width; j++) {
-            board->board[i][j] = 0;
-        }
-    }
+    // using memset instead of this
+    // for (int i = 0; i < board->height; i++) {
+    //     for (int j = 0; j < board->width; j++) {
+    //         board->board[i][j] = 0;
+    //     }
+    // }
 
     return board;
 }
@@ -641,78 +856,288 @@ void fill_board_with_pieces(Board *board, Piece *pieces) {
     }
 
     for (int p_idx = 0; p_idx < MAX_PIECES; p_idx++) {
-        int shape[SHAPES_ROWS][SHAPES_COLS];
-        // memcpy(shape, tetris_shape[pieces[p_idx].type - 1][pieces[p_idx].rotation -1], sizeof(shape));
-
-        // for (int i = 0; i < b)
+        Piece *piece = &pieces[p_idx];
+        fill_board_with_piece(board, piece, p_idx + 1);
     }
 }
 
-bool is_piece_out_of_bounds(Board *board, Piece *piece) {
-    if (board == NULL || board->board == NULL || piece == NULL) {
-        pstderr("is_shape_out_of_bounds(): board or piece is NULL!");
-        return true;
+bool fill_board_with_piece(Board *board, Piece *piece, int piece_board_identifier) {
+    if (board == NULL || board->board == NULL) {
+        pstderr("fill_board_with_piece(): board or pieces is NULL!");
+        return false;
+    }
+    if (piece == NULL) {
+        pstderr("fill_board_with_piece(): board or pieces is NULL!");
+        return false;
     }
 
-    int shape[SHAPES_ROWS][SHAPES_COLS];
-    // minus 1 because 'type' and 'rotation' are zero-indexed
-    // memcpy(shape, tetris_shape[piece->type - 1][piece->rotation - 1], sizeof(shape));
-
-    for (int i = 0; i < SHAPES_ROWS; i++) {
-        for (int j = 0; j < SHAPES_COLS; j++) {
-            if (shape[i][j] != 0) {
-                int row = piece->row + i;
-                int col = piece->col + j;
-
-                if (row < 0 || row >= board->height || col < 0 || col >= board->width) {
-                    return true; 
-                }
+    int piece_type = piece->type;
+    int piece_rotation = piece->rotation;
+    // shape 1 - all rotations
+    if (piece_type == 1) {
+        bool fill_success = fill_board_index_with_value(board, piece->row, piece->col, 0, 0, piece_board_identifier) &&
+                            fill_board_index_with_value(board, piece->row, piece->col, 0, 1, piece_board_identifier) &&
+                            fill_board_index_with_value(board, piece->row, piece->col, 1, 0, piece_board_identifier) &&
+                            fill_board_index_with_value(board, piece->row, piece->col, 1, 1, piece_board_identifier);
+        if (!fill_success) {
+            return false;
+        }
+    }
+    // shape 2
+    else if (piece_type == 2) {
+        // rotations 1 and 3
+        if (piece_rotation == 1 || piece_rotation == 3) {
+            bool fill_success = fill_board_index_with_value(board, piece->row, piece->col, 0, 0, piece_board_identifier) &&
+                                fill_board_index_with_value(board, piece->row, piece->col, 1, 0, piece_board_identifier) &&
+                                fill_board_index_with_value(board, piece->row, piece->col, 2, 0, piece_board_identifier) &&
+                                fill_board_index_with_value(board, piece->row, piece->col, 3, 0, piece_board_identifier);
+            if (!fill_success) {
+                return false;
+            }
+        }
+        // rotations 2 and 4
+        else if (piece_rotation == 2 || piece_rotation == 4) {
+            bool fill_success = fill_board_index_with_value(board, piece->row, piece->col, 0, 0, piece_board_identifier) &&
+                                fill_board_index_with_value(board, piece->row, piece->col, 0, 1, piece_board_identifier) &&
+                                fill_board_index_with_value(board, piece->row, piece->col, 0, 2, piece_board_identifier) &&
+                                fill_board_index_with_value(board, piece->row, piece->col, 0, 3, piece_board_identifier);
+            if (!fill_success) {
+                return false;
             }
         }
     }
-    return false;
+    // shape 3
+    else if (piece_type == 3) {
+        // rotations 1 and 3
+        if (piece_rotation == 1 || piece_rotation == 3) {
+            bool fill_success = fill_board_index_with_value(board, piece->row, piece->col, 0, 0, piece_board_identifier) &&
+                                fill_board_index_with_value(board, piece->row, piece->col, 0, 1, piece_board_identifier) &&
+                                fill_board_index_with_value(board, piece->row, piece->col, -1, 1, piece_board_identifier) &&
+                                fill_board_index_with_value(board, piece->row, piece->col, -1, 2, piece_board_identifier);
+            if (!fill_success) {
+                return false;
+            }
+        }
+        // rotations 2 and 4
+        else if (piece_rotation == 2 || piece_rotation == 4) {
+            bool fill_success = fill_board_index_with_value(board, piece->row, piece->col, 0, 0, piece_board_identifier) &&
+                                fill_board_index_with_value(board, piece->row, piece->col, 1, 0, piece_board_identifier) &&
+                                fill_board_index_with_value(board, piece->row, piece->col, 1, 1, piece_board_identifier) &&
+                                fill_board_index_with_value(board, piece->row, piece->col, 2, 1, piece_board_identifier);
+            if (!fill_success) {
+                return false;
+            }
+        }
+    }
+    // shape 4
+    else if (piece_type == 4) {
+        // rotation 1
+        if (piece_rotation == 1) {
+            bool fill_success = fill_board_index_with_value(board, piece->row, piece->col, 0, 0, piece_board_identifier) &&
+                                fill_board_index_with_value(board, piece->row, piece->col, 1, 0, piece_board_identifier) &&
+                                fill_board_index_with_value(board, piece->row, piece->col, 2, 0, piece_board_identifier) &&
+                                fill_board_index_with_value(board, piece->row, piece->col, 2, 1, piece_board_identifier);
+            if (!fill_success) {
+                return false;
+            }
+        }
+        // rotation 2
+        else if (piece_rotation == 2) {
+            bool fill_success = fill_board_index_with_value(board, piece->row, piece->col, 0, 0, piece_board_identifier) &&
+                                fill_board_index_with_value(board, piece->row, piece->col, 0, 1, piece_board_identifier) &&
+                                fill_board_index_with_value(board, piece->row, piece->col, 0, 2, piece_board_identifier) &&
+                                fill_board_index_with_value(board, piece->row, piece->col, 1, 0, piece_board_identifier);
+            if (!fill_success) {
+                return false;
+            }
+        }
+        // rotation 3
+        else if (piece_rotation == 3) {
+            bool fill_success = fill_board_index_with_value(board, piece->row, piece->col, 0, 0, piece_board_identifier) &&
+                                fill_board_index_with_value(board, piece->row, piece->col, 0, 1, piece_board_identifier) &&
+                                fill_board_index_with_value(board, piece->row, piece->col, 1, 1, piece_board_identifier) &&
+                                fill_board_index_with_value(board, piece->row, piece->col, 2, 1, piece_board_identifier);
+            if (!fill_success) {
+                return false;
+            }
+        }
+        // rotation 4
+        else if (piece_rotation == 4) {
+            bool fill_success = fill_board_index_with_value(board, piece->row, piece->col, 0, 0, piece_board_identifier) &&
+                                fill_board_index_with_value(board, piece->row, piece->col, 0, 1, piece_board_identifier) &&
+                                fill_board_index_with_value(board, piece->row, piece->col, 0, 2, piece_board_identifier) &&
+                                fill_board_index_with_value(board, piece->row, piece->col, -1, 2, piece_board_identifier);
+            if (!fill_success) {
+                return false;
+            }
+        }
+    }
+    // shape 5
+    else if (piece_type == 5) {
+        // rotations 1 and 3
+        if (piece_rotation == 1 || piece_rotation == 3) {
+            bool fill_success = fill_board_index_with_value(board, piece->row, piece->col, 0, 0, piece_board_identifier) &&
+                                fill_board_index_with_value(board, piece->row, piece->col, 0, 1, piece_board_identifier) &&
+                                fill_board_index_with_value(board, piece->row, piece->col, 1, 1, piece_board_identifier) &&
+                                fill_board_index_with_value(board, piece->row, piece->col, 1, 2, piece_board_identifier);
+            if (!fill_success) {
+                return false;
+            }
+        }
+        // rotations 2 and 4
+        else if (piece_rotation == 2 || piece_rotation == 4) {
+            bool fill_success = fill_board_index_with_value(board, piece->row, piece->col, 0, 0, piece_board_identifier) &&
+                                fill_board_index_with_value(board, piece->row, piece->col, 1, 0, piece_board_identifier) &&
+                                fill_board_index_with_value(board, piece->row, piece->col, 0, 1, piece_board_identifier) &&
+                                fill_board_index_with_value(board, piece->row, piece->col, -1, 1, piece_board_identifier);
+            if (!fill_success) {
+                return false;
+            }
+        }
+    }
+    // shape 6
+    else if (piece_type == 6) {
+        // rotation 1
+        if (piece_rotation == 1) {
+            bool fill_success = fill_board_index_with_value(board, piece->row, piece->col, 0, 0, piece_board_identifier) &&
+                                fill_board_index_with_value(board, piece->row, piece->col, 0, 1, piece_board_identifier) &&
+                                fill_board_index_with_value(board, piece->row, piece->col, -1, 1, piece_board_identifier) &&
+                                fill_board_index_with_value(board, piece->row, piece->col, -2, 1, piece_board_identifier);
+            if (!fill_success) {
+                return false;
+            }
+        }
+        // rotation 2
+        else if (piece_rotation == 2) {
+            bool fill_success = fill_board_index_with_value(board, piece->row, piece->col, 0, 0, piece_board_identifier) &&
+                                fill_board_index_with_value(board, piece->row, piece->col, 1, 0, piece_board_identifier) &&
+                                fill_board_index_with_value(board, piece->row, piece->col, 1, 1, piece_board_identifier) &&
+                                fill_board_index_with_value(board, piece->row, piece->col, 1, 2, piece_board_identifier);
+            if (!fill_success) {
+                return false;
+            }
+        }
+        // rotation 3
+        else if (piece_rotation == 3) {
+            bool fill_success = fill_board_index_with_value(board, piece->row, piece->col, 0, 0, piece_board_identifier) &&
+                                fill_board_index_with_value(board, piece->row, piece->col, 0, 1, piece_board_identifier) &&
+                                fill_board_index_with_value(board, piece->row, piece->col, 1, 0, piece_board_identifier) &&
+                                fill_board_index_with_value(board, piece->row, piece->col, 2, 0, piece_board_identifier);
+            if (!fill_success) {
+                return false;
+            }
+        }
+        // rotation 4
+        else if (piece_rotation == 4) {
+            bool fill_success = fill_board_index_with_value(board, piece->row, piece->col, 0, 0, piece_board_identifier) &&
+                                fill_board_index_with_value(board, piece->row, piece->col, 0, 1, piece_board_identifier) &&
+                                fill_board_index_with_value(board, piece->row, piece->col, 0, 2, piece_board_identifier) &&
+                                fill_board_index_with_value(board, piece->row, piece->col, 1, 2, piece_board_identifier);
+            if (!fill_success) {
+                return false;
+            }
+        }
+    }
+    // shape 7
+    else if (piece_type == 7) {
+        // rotation 1
+        if (piece_rotation == 1) {
+            bool fill_success = fill_board_index_with_value(board, piece->row, piece->col, 0, 0, piece_board_identifier) &&
+                                fill_board_index_with_value(board, piece->row, piece->col, 0, 1, piece_board_identifier) &&
+                                fill_board_index_with_value(board, piece->row, piece->col, 0, 2, piece_board_identifier) &&
+                                fill_board_index_with_value(board, piece->row, piece->col, 1, 1, piece_board_identifier);
+            if (!fill_success) {
+                return false;
+            }
+        }
+        // rotation 2
+        else if (piece_rotation == 2) {
+            bool fill_success = fill_board_index_with_value(board, piece->row, piece->col, 0, 0, piece_board_identifier) &&
+                                fill_board_index_with_value(board, piece->row, piece->col, 0, 1, piece_board_identifier) &&
+                                fill_board_index_with_value(board, piece->row, piece->col, -1, 1, piece_board_identifier) &&
+                                fill_board_index_with_value(board, piece->row, piece->col, 1, 1, piece_board_identifier);
+            if (!fill_success) {
+                return false;
+            }
+        }
+        // rotation 3
+        else if (piece_rotation == 3) {
+            bool fill_success = fill_board_index_with_value(board, piece->row, piece->col, 0, 0, piece_board_identifier) &&
+                                fill_board_index_with_value(board, piece->row, piece->col, 0, 1, piece_board_identifier) &&
+                                fill_board_index_with_value(board, piece->row, piece->col, 0, 2, piece_board_identifier) &&
+                                fill_board_index_with_value(board, piece->row, piece->col, -1, 1, piece_board_identifier);
+            if (!fill_success) {
+                return false;
+            }
+        }
+        // rotation 4
+        else if (piece_rotation == 4) {
+            bool fill_success = fill_board_index_with_value(board, piece->row, piece->col, 0, 0, piece_board_identifier) &&
+                                fill_board_index_with_value(board, piece->row, piece->col, 1, 0, piece_board_identifier) &&
+                                fill_board_index_with_value(board, piece->row, piece->col, 2, 0, piece_board_identifier) &&
+                                fill_board_index_with_value(board, piece->row, piece->col, 1, 1, piece_board_identifier);
+            if (!fill_success) {
+                return false;
+            }
+        }
+    }
+
+    return true;
 }
 
+bool fill_board_index_with_value(Board *board, int piece_row, int piece_col, int row_offset, int col_offset, int value) {
+    if (board == NULL || board->board == NULL) {
+        pstderr("fill_board_index_with_value(): board is NULL!");
+        return false;
+    }
+
+    int row = piece_row + row_offset;
+    int col = piece_col + col_offset;
+
+    if (is_position_out_of_bounds_on_board(board, row, col, 0, 0)) {
+        pstderr("fill_board_index_with_value(): FAILED at (%d, %d) - Out of bounds!", row, col);
+        return false;
+    }
+    if (!is_board_index_empty(board, row, col)) {
+        pstderr("fill_board_index_with_value(): FAILED at (%d, %d) - Not 0!", row, col);
+        return false;
+    }
+    board->board[row][col] = value;
+    return true;
+}
+
+bool is_board_index_empty(Board *board, int row, int col) {
+    if (board == NULL || board->board == NULL) {
+        pstderr("fill_board_index_with_value(): board is NULL!");
+        return false;
+    }
+    if (is_position_out_of_bounds_on_board(board, row, col, 0, 0)) {
+        pstderr("is_board_index_empty(): FAILED at (%d, %d) - Out of bounds!", row, col);
+        return false;
+    }
+    return board->board[row][col] == 0;
+}
+
+// Returns 'true'
 bool are_ships_overlapping(Board *board, Piece *pieces) {
     if (board == NULL || board->board == NULL || pieces == NULL) {
         pstderr("are_ships_overlapping(): board or pieces is NULL!");
         return true;
     }
-
     Board *board_cpy = create_board(board->width, board->height);
-    fill_board_with_0s(board_cpy);
+    for (int p_idx = 0; p_idx < MAX_PIECES; p_idx++) {
+        Piece *piece = &pieces[p_idx];
+        int piece_board_identifier = p_idx + 1;
+        int piece_type = piece->type;
+        int piece_rotation = piece->rotation;
 
-    for (int p = 0; p < MAX_PIECES; p++) {
-        int shape[SHAPES_ROWS][SHAPES_COLS];
-        // memcpy(shape, tetris_shape[pieces[p].type - 1][pieces[p].rotation - 1], sizeof(shape));
-
-        for (int i = 0; i < SHAPES_ROWS; i++) {
-            for (int j = 0; j < SHAPES_COLS; j++) {
-                if (shape[i][j] != 0) {
-                    int row = pieces[p].row + i;
-                    int col = pieces[p].col + j;
-
-                    if (row < 0 || row >= board->height || col < 0 || col >= board->width) {
-                        pstderr("are_ships_overlapping(): Piece goes out of board bounds.");
-        
-                        delete_board(board_cpy);
-                        return true;
-                    }
-
-                    if (board_cpy->board[row][col] != 0) {
-                        pstderr("are_ships_overlapping(): Overlap detected at (%d, %d)", row, col);
-                        
-                        delete_board(board_cpy);
-                        return true;
-                    }
-
-                    board_cpy->board[row][col] = shape[i][j];
-                }
-            }
+        if (!fill_board_with_piece(board_cpy, piece, piece_board_identifier)) {
+            free(board_cpy);
+            return true;
         }
     }
 
-    delete_board(board_cpy);
+    free(board_cpy);
     return false;
 }
 
@@ -786,19 +1211,23 @@ int remaining_pieces_on_board(Board *board) {
     return counter;
 }
 
-bool is_position_out_of_bounds_on_board(Board *board, int row, int col, int final_row, int final_col) {
+bool is_position_out_of_bounds_on_board(Board *board, int piece_row_idx, int piece_col_idx, int new_row_offset, int new_col_offset) {
     if (board == NULL || board->board == NULL) {
         pstderr("is_position_out_of_bounds_on_board(): board is NULL!");
         return true;
     }
-    if (row < 0 || col < 0 || final_row < 0 || final_row < 0 || final_col < 0) {
-        pstderr("is_position_out_of_bounds_on_board(): an argument is negative!");
+
+    if (piece_row_idx < 0 || piece_col_idx < 0) {
+        pstderr("is_position_out_of_bounds_on_board(): piece row or piece column is NULL, therefore trivally out of bounds!");
         return true;
     }
-    int end_row = row + final_row;
-    int end_col = col + final_col;
 
-    return (end_row >= board->height || end_col >= board->width);
+    int new_row_idx = piece_row_idx + new_row_offset;
+    int new_col_idx = piece_col_idx + new_col_offset;
+
+    return !(new_row_idx >= 0 && new_col_idx >= 0 && new_row_idx < board->height && new_col_idx < board->width);
+
+
 }
 
 void insert_pieces_by_shape_rotation_into_board(Board *board, Piece *pieces) {
