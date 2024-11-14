@@ -102,6 +102,8 @@ void fill_board_with_pieces(Board *board, Piece *pieces);
 bool fill_board_with_piece(Board *board, Piece *piece, int piece_board_identifier);
 bool fill_board_index_with_value(Board *board, int piece_row, int piece_col, int row_offset, int col_offset, int value);
 bool is_board_index_empty(Board *board, int row, int col);
+char *get_game_state_from_board(Board *board);
+void send_query_response(Player* player, Board *board);
 
 // player pointers
 
@@ -232,12 +234,17 @@ int main() {
             player_01->play = true;
         }
         
-        while (player_01->play == true) {
-            game_process_player_play_packets(buffer, 1);
-        }
-        
-        while (player_02->play == true) {
-            game_process_player_play_packets(buffer, 2);
+        while (true) {
+            while (player_01->play == true) {
+                pstdout("Main Game Loop: Player 01 is playing!");
+                game_process_player_play_packets(buffer, 1);
+            }
+            
+            while (player_02->play == true) {
+                pstdout("Main Game Loop: Player 02 is playing!");
+                game_process_player_play_packets(buffer, 2);
+            }
+            player_01->play = true;
         }
     }
 
@@ -430,9 +437,9 @@ void game_process_player_board_initialize(char *buffer, int player_number) {
                     
                     // shape 1 - all rotations
                     if (piece_type == 1) {
-                        if (is_position_out_of_bounds_on_board(player->board, piece->row, piece->col, 0, 0) &&
-                            is_position_out_of_bounds_on_board(player->board, piece->row, piece->col, 0, 1) &&
-                            is_position_out_of_bounds_on_board(player->board, piece->row, piece->col, 1, 0) &&
+                        if (is_position_out_of_bounds_on_board(player->board, piece->row, piece->col, 0, 0) ||
+                            is_position_out_of_bounds_on_board(player->board, piece->row, piece->col, 0, 1) ||
+                            is_position_out_of_bounds_on_board(player->board, piece->row, piece->col, 1, 0) ||
                             is_position_out_of_bounds_on_board(player->board, piece->row, piece->col, 1, 1)) {
                             handle_initialize_error_response(player->socket->connection_fd, INVALID_INITIALIZE_PACKET_SHIP_DOES_NOT_FIT, token, pieces);
                             return;
@@ -702,7 +709,7 @@ void game_process_player_play_packets(char *buffer, int player_number) {
 
                     if (remaining_ships == 0) {
                         send_shot_response(player->socket->connection_fd, remaining_ships, hit_or_miss);
-                        read_from_player_socket(player->socket->connection_fd, buffer);
+                        read_from_player_socket(other_player->socket->connection_fd, buffer);
                         send_response(player->socket->connection_fd, HALT_WIN);
                         send_response(other_player->socket->connection_fd, HALT_LOSS);
                         free(token);
@@ -721,11 +728,8 @@ void game_process_player_play_packets(char *buffer, int player_number) {
 
             break;
         case 'Q':
-            // querying logic - placeholder code currently
-            send_response(player->socket->connection_fd, HALT_LOSS);
-            send_response(other_player->socket->connection_fd, HALT_WIN);
-            free(token);
-            exit(EXIT_SUCCESS);
+            send_query_response(player, other_player->board);
+            break;
         case 'F':
             send_response(player->socket->connection_fd, HALT_LOSS);
             send_response(other_player->socket->connection_fd, HALT_WIN);
@@ -1118,7 +1122,6 @@ bool is_board_index_empty(Board *board, int row, int col) {
     return board->board[row][col] == 0;
 }
 
-// Returns 'true'
 bool are_ships_overlapping(Board *board, Piece *pieces) {
     if (board == NULL || board->board == NULL || pieces == NULL) {
         pstderr("are_ships_overlapping(): board or pieces is NULL!");
@@ -1211,6 +1214,12 @@ int remaining_pieces_on_board(Board *board) {
     return counter;
 }
 
+void send_query_response(Player* player, Board *board) {
+    char *state = get_game_state_from_board(board);
+    send_response(player->socket->connection_fd, state);
+    free(state);
+}
+
 bool is_position_out_of_bounds_on_board(Board *board, int piece_row_idx, int piece_col_idx, int new_row_offset, int new_col_offset) {
     if (board == NULL || board->board == NULL) {
         pstderr("is_position_out_of_bounds_on_board(): board is NULL!");
@@ -1267,6 +1276,42 @@ void insert_pieces_by_shape_rotation_into_board(Board *board, Piece *pieces) {
             }
         }
     }
+}
+
+char *get_game_state_from_board(Board *board) {
+    char *buffer = malloc(BUFFER_SIZE);
+    if (buffer == NULL) {
+        pstderr("get_game_state_from_board(): malloc failed!");
+        return NULL;
+    }
+
+    buffer[0] = '\0';
+    strcat(buffer, "G");
+
+    char temp[BUFFER_SIZE];
+
+    int remaining_pieces = remaining_pieces_on_board(board);
+    snprintf(temp, sizeof(temp), " %d", remaining_pieces);
+    strncat(buffer, temp, BUFFER_SIZE - strlen(buffer) - 1);
+
+    for (int i = 0; i < board->height; i++) {
+        for (int j = 0; j < board->width; j++) {
+            int idx = board->board[i][j];
+            if (idx < 0) {
+                // miss
+                if (idx == -1) {
+                    snprintf(temp, sizeof(temp), " M %d %d", j, i);
+                } 
+                // hit
+                else if (idx == -2) {
+                    snprintf(temp, sizeof(temp), " H %d %d", j, i);
+                }
+                strncat(buffer, temp, BUFFER_SIZE - strlen(buffer) - 1);
+            }
+        }
+    }
+
+    return buffer;
 }
 
 void pstdout(const char *format, ...) {
