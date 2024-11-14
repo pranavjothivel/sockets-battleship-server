@@ -641,15 +641,9 @@ void game_process_player_board_initialize(char *buffer, int player_number) {
                 }
 
                 // error 303
-                Board *board_cpy = create_board(player->board->width, player->board->height);
                 if (are_ships_overlapping(player->board, pieces) == true) {
                     send_initialize_board_response(player->socket->connection_fd, INVALID_INITIALIZE_PACKET_SHIPS_OVERLAP, token, pieces);
-                    // delete_board(board_cpy);
                     return;
-                }
-                if (board_cpy != NULL) {
-                    pstdout("game_process_player_board_initialize(): board_cpy is not NULL!");
-                    delete_board(board_cpy);
                 }
 
                 // if we reach this point - there are no errors! :) 
