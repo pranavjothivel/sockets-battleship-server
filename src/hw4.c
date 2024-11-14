@@ -1137,11 +1137,13 @@ bool are_ships_overlapping(Board *board, Piece *pieces) {
 
         if (!fill_board_with_piece(board_cpy, piece, piece_board_identifier)) {
             delete_board(board_cpy);
+            pstdout("are_ships_overlapping(): fill_board_with_piece() failed and deleting 'board_cpy'!");
             return true;
         }
     }
 
     delete_board(board_cpy);
+    pstdout("are_ships_overlapping(): no overlapping ships and deleting 'board_cpy'!");
     return false;
 }
 
