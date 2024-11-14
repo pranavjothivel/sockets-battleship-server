@@ -1171,6 +1171,7 @@ bool delete_board(Board *board) {
     board->width = 0;
     board->height = 0;
     board->initialized = false;
+    free(board);
 
     return true; // Indicate successful deletion
 }
