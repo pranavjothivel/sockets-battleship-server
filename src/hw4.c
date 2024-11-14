@@ -13,11 +13,6 @@
 #define BUFFER_SIZE 1024
 #define MAX_PIECES 5
 
-#define SHAPES_NUM 7
-#define SHAPES_ROTATIONS 4
-#define SHAPES_ROWS 4
-#define SHAPES_COLS 4
-
 // server responses
 
 // error codes
@@ -649,8 +644,12 @@ void game_process_player_board_initialize(char *buffer, int player_number) {
                 Board *board_cpy = create_board(player->board->width, player->board->height);
                 if (are_ships_overlapping(player->board, pieces) == true) {
                     send_initialize_board_response(player->socket->connection_fd, INVALID_INITIALIZE_PACKET_SHIPS_OVERLAP, token, pieces);
-                    free(board_cpy);
+                    // delete_board(board_cpy);
                     return;
+                }
+                if (board_cpy != NULL) {
+                    pstdout("game_process_player_board_initialize(): board_cpy is not NULL!");
+                    delete_board(board_cpy);
                 }
 
                 // if we reach this point - there are no errors! :) 
