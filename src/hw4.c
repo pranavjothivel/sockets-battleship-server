@@ -329,7 +329,7 @@ void read_from_player_socket(int socket_fd, char *buffer) {
     }
 }
 
-void handle_initialize_error_response(int conn_fd, const char *error_packet, char *token, Piece *pieces) {
+void send_initialize_board_response(int conn_fd, const char *error_packet, char *token, Piece *pieces) {
     send_response(conn_fd, error_packet);
     if (token != NULL) {
         free(token);
@@ -348,14 +348,14 @@ void game_process_player_board_initialize(char *buffer, int player_number) {
     char *token = get_first_token_from_buffer(buffer);
     if (token == NULL) {
         pstderr("game_process_player_board_initialize(): Failed to get token from buffer.");
-        handle_initialize_error_response(player->socket->connection_fd, INVALID_INITIALIZE_PACKET_TYPE_INVALID_PARAMETERS, token, NULL);
+        send_initialize_board_response(player->socket->connection_fd, INVALID_INITIALIZE_PACKET_TYPE_INVALID_PARAMETERS, token, NULL);
         return;
     }
 
     Piece* pieces = malloc(MAX_PIECES * sizeof(Piece));
     if (pieces == NULL) {
         pstderr("game_process_player_board_initialize(): malloc for 'pieces' FAILED.");
-        handle_initialize_error_response(player->socket->connection_fd, INVALID_INITIALIZE_PACKET_TYPE_INVALID_PARAMETERS, token, pieces);
+        send_initialize_board_response(player->socket->connection_fd, INVALID_INITIALIZE_PACKET_TYPE_INVALID_PARAMETERS, token, pieces);
         exit(EXIT_FAILURE);
     }
 
@@ -368,7 +368,7 @@ void game_process_player_board_initialize(char *buffer, int player_number) {
             while (sscanf(buffer, "%d %d %d %d", &type, &rotation, &col, &row) == 4) {
                 if (count >= MAX_PIECES) {
                     pstderr("game_process_player_board_initialize(): Too many pieces!");
-                    handle_initialize_error_response(player->socket->connection_fd, INVALID_INITIALIZE_PACKET_TYPE_INVALID_PARAMETERS, token, pieces);
+                    send_initialize_board_response(player->socket->connection_fd, INVALID_INITIALIZE_PACKET_TYPE_INVALID_PARAMETERS, token, pieces);
                     return;
                 }
 
@@ -394,13 +394,13 @@ void game_process_player_board_initialize(char *buffer, int player_number) {
             
             int extraneous_parameter;
             if (sscanf(buffer, "%d", &extraneous_parameter) == 1) {
-                handle_initialize_error_response(player->socket->connection_fd, INVALID_INITIALIZE_PACKET_TYPE_INVALID_PARAMETERS, token, pieces);
+                send_initialize_board_response(player->socket->connection_fd, INVALID_INITIALIZE_PACKET_TYPE_INVALID_PARAMETERS, token, pieces);
                 break;
             }
 
             if (count != MAX_PIECES) {
                 pstderr("game_process_player_board_initialize(): Invalid initialize parameters!");
-                handle_initialize_error_response(player->socket->connection_fd, INVALID_INITIALIZE_PACKET_TYPE_INVALID_PARAMETERS, token, pieces);
+                send_initialize_board_response(player->socket->connection_fd, INVALID_INITIALIZE_PACKET_TYPE_INVALID_PARAMETERS, token, pieces);
             } 
             else {
                 pstdout("game_process_player_board_initialize(): valid initialize parameters, checking for errors 300-303...");
@@ -415,7 +415,7 @@ void game_process_player_board_initialize(char *buffer, int player_number) {
                     // error 300
                     if (pieces[i].type < 1 || pieces[i].type > 7) {
                         pstderr("E 300 for type %d for piece %d", pieces[i].type, i);
-                        handle_initialize_error_response(player->socket->connection_fd, INVALID_INITIALIZE_PACKET_SHAPE_OUT_OF_RANGE, token, pieces);
+                        send_initialize_board_response(player->socket->connection_fd, INVALID_INITIALIZE_PACKET_SHAPE_OUT_OF_RANGE, token, pieces);
                         return;
                     } 
                 }
@@ -424,7 +424,7 @@ void game_process_player_board_initialize(char *buffer, int player_number) {
                     // error 301
                     if (pieces[i].rotation < 1 || pieces[i].rotation > 4) {
                         pstderr("E 301 for rotation %d for piece %d", pieces[i].rotation, i);
-                        handle_initialize_error_response(player->socket->connection_fd, INVALID_INITIALIZE_PACKET_ROTATION_OUT_OF_RANGE, token, pieces);
+                        send_initialize_board_response(player->socket->connection_fd, INVALID_INITIALIZE_PACKET_ROTATION_OUT_OF_RANGE, token, pieces);
                         return;
                     }
                 }
@@ -441,7 +441,7 @@ void game_process_player_board_initialize(char *buffer, int player_number) {
                             is_position_out_of_bounds_on_board(player->board, piece->row, piece->col, 0, 1) ||
                             is_position_out_of_bounds_on_board(player->board, piece->row, piece->col, 1, 0) ||
                             is_position_out_of_bounds_on_board(player->board, piece->row, piece->col, 1, 1)) {
-                            handle_initialize_error_response(player->socket->connection_fd, INVALID_INITIALIZE_PACKET_SHIP_DOES_NOT_FIT, token, pieces);
+                            send_initialize_board_response(player->socket->connection_fd, INVALID_INITIALIZE_PACKET_SHIP_DOES_NOT_FIT, token, pieces);
                             return;
                         }   
                     }
@@ -453,7 +453,7 @@ void game_process_player_board_initialize(char *buffer, int player_number) {
                                 is_position_out_of_bounds_on_board(player->board, piece->row, piece->col, 1, 0) ||
                                 is_position_out_of_bounds_on_board(player->board, piece->row, piece->col, 2, 0) ||
                                 is_position_out_of_bounds_on_board(player->board, piece->row, piece->col, 3, 0)) {
-                                handle_initialize_error_response(player->socket->connection_fd, INVALID_INITIALIZE_PACKET_SHIP_DOES_NOT_FIT, token, pieces);
+                                send_initialize_board_response(player->socket->connection_fd, INVALID_INITIALIZE_PACKET_SHIP_DOES_NOT_FIT, token, pieces);
                                 return;
                             }
                         }
@@ -463,7 +463,7 @@ void game_process_player_board_initialize(char *buffer, int player_number) {
                                 is_position_out_of_bounds_on_board(player->board, piece->row, piece->col, 0, 1) ||
                                 is_position_out_of_bounds_on_board(player->board, piece->row, piece->col, 0, 2) ||
                                 is_position_out_of_bounds_on_board(player->board, piece->row, piece->col, 0, 3)) {
-                                handle_initialize_error_response(player->socket->connection_fd, INVALID_INITIALIZE_PACKET_SHIP_DOES_NOT_FIT, token, pieces);
+                                send_initialize_board_response(player->socket->connection_fd, INVALID_INITIALIZE_PACKET_SHIP_DOES_NOT_FIT, token, pieces);
                                 return;
                             }
                         }  
@@ -476,7 +476,7 @@ void game_process_player_board_initialize(char *buffer, int player_number) {
                                 is_position_out_of_bounds_on_board(player->board, piece->row, piece->col, 0, 1) ||
                                 is_position_out_of_bounds_on_board(player->board, piece->row, piece->col, -1, 1) ||
                                 is_position_out_of_bounds_on_board(player->board, piece->row, piece->col, -1, 2)) {
-                                handle_initialize_error_response(player->socket->connection_fd, INVALID_INITIALIZE_PACKET_SHIP_DOES_NOT_FIT, token, pieces);
+                                send_initialize_board_response(player->socket->connection_fd, INVALID_INITIALIZE_PACKET_SHIP_DOES_NOT_FIT, token, pieces);
                                 return;
                             }
                         }
@@ -486,7 +486,7 @@ void game_process_player_board_initialize(char *buffer, int player_number) {
                                 is_position_out_of_bounds_on_board(player->board, piece->row, piece->col, 1, 0) ||
                                 is_position_out_of_bounds_on_board(player->board, piece->row, piece->col, 1, 1) ||
                                 is_position_out_of_bounds_on_board(player->board, piece->row, piece->col, 2, 1)) {
-                                handle_initialize_error_response(player->socket->connection_fd, INVALID_INITIALIZE_PACKET_SHIP_DOES_NOT_FIT, token, pieces);
+                                send_initialize_board_response(player->socket->connection_fd, INVALID_INITIALIZE_PACKET_SHIP_DOES_NOT_FIT, token, pieces);
                                 return;
                             }
                         }
@@ -499,7 +499,7 @@ void game_process_player_board_initialize(char *buffer, int player_number) {
                                 is_position_out_of_bounds_on_board(player->board, piece->row, piece->col, 1, 0) ||
                                 is_position_out_of_bounds_on_board(player->board, piece->row, piece->col, 2, 0) ||
                                 is_position_out_of_bounds_on_board(player->board, piece->row, piece->col, 2, 1)) {
-                                handle_initialize_error_response(player->socket->connection_fd, INVALID_INITIALIZE_PACKET_SHIP_DOES_NOT_FIT, token, pieces);
+                                send_initialize_board_response(player->socket->connection_fd, INVALID_INITIALIZE_PACKET_SHIP_DOES_NOT_FIT, token, pieces);
                                 return;
                             }
                         }
@@ -509,7 +509,7 @@ void game_process_player_board_initialize(char *buffer, int player_number) {
                                 is_position_out_of_bounds_on_board(player->board, piece->row, piece->col, 0, 1) ||
                                 is_position_out_of_bounds_on_board(player->board, piece->row, piece->col, 0, 2) ||
                                 is_position_out_of_bounds_on_board(player->board, piece->row, piece->col, 1, 0)) {
-                                handle_initialize_error_response(player->socket->connection_fd, INVALID_INITIALIZE_PACKET_SHIP_DOES_NOT_FIT, token, pieces);
+                                send_initialize_board_response(player->socket->connection_fd, INVALID_INITIALIZE_PACKET_SHIP_DOES_NOT_FIT, token, pieces);
                                 return;
                             }
                         }
@@ -519,7 +519,7 @@ void game_process_player_board_initialize(char *buffer, int player_number) {
                                 is_position_out_of_bounds_on_board(player->board, piece->row, piece->col, 0, 1) ||
                                 is_position_out_of_bounds_on_board(player->board, piece->row, piece->col, 1, 1) ||
                                 is_position_out_of_bounds_on_board(player->board, piece->row, piece->col, 2, 1)) {
-                                handle_initialize_error_response(player->socket->connection_fd, INVALID_INITIALIZE_PACKET_SHIP_DOES_NOT_FIT, token, pieces);
+                                send_initialize_board_response(player->socket->connection_fd, INVALID_INITIALIZE_PACKET_SHIP_DOES_NOT_FIT, token, pieces);
                                 return;
                             }
                         }
@@ -529,7 +529,7 @@ void game_process_player_board_initialize(char *buffer, int player_number) {
                                 is_position_out_of_bounds_on_board(player->board, piece->row, piece->col, 0, 1) ||
                                 is_position_out_of_bounds_on_board(player->board, piece->row, piece->col, 0, 2) ||
                                 is_position_out_of_bounds_on_board(player->board, piece->row, piece->col, -1, 2)) {
-                                handle_initialize_error_response(player->socket->connection_fd, INVALID_INITIALIZE_PACKET_SHIP_DOES_NOT_FIT, token, pieces);
+                                send_initialize_board_response(player->socket->connection_fd, INVALID_INITIALIZE_PACKET_SHIP_DOES_NOT_FIT, token, pieces);
                                 return;
                             }
                         }
@@ -542,7 +542,7 @@ void game_process_player_board_initialize(char *buffer, int player_number) {
                                 is_position_out_of_bounds_on_board(player->board, piece->row, piece->col, 0, 1) ||
                                 is_position_out_of_bounds_on_board(player->board, piece->row, piece->col, 1, 1) ||
                                 is_position_out_of_bounds_on_board(player->board, piece->row, piece->col, 1, 2)) {
-                                handle_initialize_error_response(player->socket->connection_fd, INVALID_INITIALIZE_PACKET_SHIP_DOES_NOT_FIT, token, pieces);
+                                send_initialize_board_response(player->socket->connection_fd, INVALID_INITIALIZE_PACKET_SHIP_DOES_NOT_FIT, token, pieces);
                                 return;
                             }
                         }
@@ -552,7 +552,7 @@ void game_process_player_board_initialize(char *buffer, int player_number) {
                                 is_position_out_of_bounds_on_board(player->board, piece->row, piece->col, 1, 0) ||
                                 is_position_out_of_bounds_on_board(player->board, piece->row, piece->col, 0, 1) ||
                                 is_position_out_of_bounds_on_board(player->board, piece->row, piece->col, -1, 1)) {
-                                handle_initialize_error_response(player->socket->connection_fd, INVALID_INITIALIZE_PACKET_SHIP_DOES_NOT_FIT, token, pieces);
+                                send_initialize_board_response(player->socket->connection_fd, INVALID_INITIALIZE_PACKET_SHIP_DOES_NOT_FIT, token, pieces);
                                 return;
                             }
                         }
@@ -565,7 +565,7 @@ void game_process_player_board_initialize(char *buffer, int player_number) {
                                 is_position_out_of_bounds_on_board(player->board, piece->row, piece->col, 0, 1) ||
                                 is_position_out_of_bounds_on_board(player->board, piece->row, piece->col, -1, 1) ||
                                 is_position_out_of_bounds_on_board(player->board, piece->row, piece->col, -2, 1)) {
-                                handle_initialize_error_response(player->socket->connection_fd, INVALID_INITIALIZE_PACKET_SHIP_DOES_NOT_FIT, token, pieces);
+                                send_initialize_board_response(player->socket->connection_fd, INVALID_INITIALIZE_PACKET_SHIP_DOES_NOT_FIT, token, pieces);
                                 return;
                             }
                         }
@@ -575,7 +575,7 @@ void game_process_player_board_initialize(char *buffer, int player_number) {
                                 is_position_out_of_bounds_on_board(player->board, piece->row, piece->col, 1, 0) ||
                                 is_position_out_of_bounds_on_board(player->board, piece->row, piece->col, 1, 1) ||
                                 is_position_out_of_bounds_on_board(player->board, piece->row, piece->col, 1, 2)) {
-                                handle_initialize_error_response(player->socket->connection_fd, INVALID_INITIALIZE_PACKET_SHIP_DOES_NOT_FIT, token, pieces);
+                                send_initialize_board_response(player->socket->connection_fd, INVALID_INITIALIZE_PACKET_SHIP_DOES_NOT_FIT, token, pieces);
                                 return;
                             }
                         }
@@ -585,7 +585,7 @@ void game_process_player_board_initialize(char *buffer, int player_number) {
                                 is_position_out_of_bounds_on_board(player->board, piece->row, piece->col, 0, 1) ||
                                 is_position_out_of_bounds_on_board(player->board, piece->row, piece->col, 1, 0) ||
                                 is_position_out_of_bounds_on_board(player->board, piece->row, piece->col, 2, 0)) {
-                                handle_initialize_error_response(player->socket->connection_fd, INVALID_INITIALIZE_PACKET_SHIP_DOES_NOT_FIT, token, pieces);
+                                send_initialize_board_response(player->socket->connection_fd, INVALID_INITIALIZE_PACKET_SHIP_DOES_NOT_FIT, token, pieces);
                                 return;
                             }
                         }
@@ -595,7 +595,7 @@ void game_process_player_board_initialize(char *buffer, int player_number) {
                                 is_position_out_of_bounds_on_board(player->board, piece->row, piece->col, 0, 1) ||
                                 is_position_out_of_bounds_on_board(player->board, piece->row, piece->col, 0, 2) ||
                                 is_position_out_of_bounds_on_board(player->board, piece->row, piece->col, 1, 2)) {
-                                handle_initialize_error_response(player->socket->connection_fd, INVALID_INITIALIZE_PACKET_SHIP_DOES_NOT_FIT, token, pieces);
+                                send_initialize_board_response(player->socket->connection_fd, INVALID_INITIALIZE_PACKET_SHIP_DOES_NOT_FIT, token, pieces);
                                 return;
                             }
                         }
@@ -608,7 +608,7 @@ void game_process_player_board_initialize(char *buffer, int player_number) {
                                 is_position_out_of_bounds_on_board(player->board, piece->row, piece->col, 0, 1) ||
                                 is_position_out_of_bounds_on_board(player->board, piece->row, piece->col, 0, 2) ||
                                 is_position_out_of_bounds_on_board(player->board, piece->row, piece->col, 1, 1)) {
-                                handle_initialize_error_response(player->socket->connection_fd, INVALID_INITIALIZE_PACKET_SHIP_DOES_NOT_FIT, token, pieces);
+                                send_initialize_board_response(player->socket->connection_fd, INVALID_INITIALIZE_PACKET_SHIP_DOES_NOT_FIT, token, pieces);
                                 return;
                             }
                         }
@@ -618,7 +618,7 @@ void game_process_player_board_initialize(char *buffer, int player_number) {
                                 is_position_out_of_bounds_on_board(player->board, piece->row, piece->col, 0, 1) ||
                                 is_position_out_of_bounds_on_board(player->board, piece->row, piece->col, -1, 1) ||
                                 is_position_out_of_bounds_on_board(player->board, piece->row, piece->col, 1, 1)) {
-                                handle_initialize_error_response(player->socket->connection_fd, INVALID_INITIALIZE_PACKET_SHIP_DOES_NOT_FIT, token, pieces);
+                                send_initialize_board_response(player->socket->connection_fd, INVALID_INITIALIZE_PACKET_SHIP_DOES_NOT_FIT, token, pieces);
                                 return;
                             }
                         }
@@ -628,7 +628,7 @@ void game_process_player_board_initialize(char *buffer, int player_number) {
                                 is_position_out_of_bounds_on_board(player->board, piece->row, piece->col, 0, 1) ||
                                 is_position_out_of_bounds_on_board(player->board, piece->row, piece->col, 0, 2) ||
                                 is_position_out_of_bounds_on_board(player->board, piece->row, piece->col, -1, 1)) {
-                                handle_initialize_error_response(player->socket->connection_fd, INVALID_INITIALIZE_PACKET_SHIP_DOES_NOT_FIT, token, pieces);
+                                send_initialize_board_response(player->socket->connection_fd, INVALID_INITIALIZE_PACKET_SHIP_DOES_NOT_FIT, token, pieces);
                                 return;
                             }
                         }
@@ -638,7 +638,7 @@ void game_process_player_board_initialize(char *buffer, int player_number) {
                                 is_position_out_of_bounds_on_board(player->board, piece->row, piece->col, 1, 0) ||
                                 is_position_out_of_bounds_on_board(player->board, piece->row, piece->col, 2, 0) ||
                                 is_position_out_of_bounds_on_board(player->board, piece->row, piece->col, 1, 1)) {
-                                handle_initialize_error_response(player->socket->connection_fd, INVALID_INITIALIZE_PACKET_SHIP_DOES_NOT_FIT, token, pieces);
+                                send_initialize_board_response(player->socket->connection_fd, INVALID_INITIALIZE_PACKET_SHIP_DOES_NOT_FIT, token, pieces);
                                 return;
                             }
                         }
@@ -648,7 +648,7 @@ void game_process_player_board_initialize(char *buffer, int player_number) {
                 // error 303
                 Board *board_cpy = create_board(player->board->width, player->board->height);
                 if (are_ships_overlapping(player->board, pieces) == true) {
-                    handle_initialize_error_response(player->socket->connection_fd, INVALID_INITIALIZE_PACKET_SHIPS_OVERLAP, token, pieces);
+                    send_initialize_board_response(player->socket->connection_fd, INVALID_INITIALIZE_PACKET_SHIPS_OVERLAP, token, pieces);
                     free(board_cpy);
                     return;
                 }
@@ -657,7 +657,7 @@ void game_process_player_board_initialize(char *buffer, int player_number) {
                 
                 fill_board_with_pieces(player->board, pieces);
 
-                send_response(player->socket->connection_fd, ACK);
+                send_initialize_board_response(player->socket->connection_fd, ACK, token, pieces);
                 player->board->initialized = true;
             }
             break;
@@ -668,7 +668,7 @@ void game_process_player_board_initialize(char *buffer, int player_number) {
             free(pieces);
             exit(EXIT_SUCCESS);
         default:
-            handle_initialize_error_response(player->socket->connection_fd, INVALID_PACKET_TYPE_EXPECTED_INITIALIZE, token, pieces);
+            send_initialize_board_response(player->socket->connection_fd, INVALID_PACKET_TYPE_EXPECTED_INITIALIZE, token, pieces);
             break;
     }
 }
