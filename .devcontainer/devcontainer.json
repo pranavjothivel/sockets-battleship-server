@@ -14,5 +14,10 @@
         "ngtystr.ppm-pgm-viewer-for-vscode"
       ]
     }
-  }
+  },
+  "features": {
+    "ghcr.io/devcontainers/features/sshd:1": {
+        "version": "latest"
+    }
+}
 }
