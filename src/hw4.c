@@ -782,6 +782,7 @@ Player* initialize_player(int number, bool ready) {
 void delete_player(Player *player) {
     if (player != NULL) {
         if (player->board != NULL) {
+            pstdout("Deleting board for Player %d", player->number);
             delete_board(player->board);
             player->board = NULL;
         }
@@ -1135,12 +1136,12 @@ bool are_ships_overlapping(Board *board, Piece *pieces) {
         int piece_rotation = piece->rotation;
 
         if (!fill_board_with_piece(board_cpy, piece, piece_board_identifier)) {
-            free(board_cpy);
+            delete_board(board_cpy);
             return true;
         }
     }
 
-    free(board_cpy);
+    delete_board(board_cpy);
     return false;
 }
 
@@ -1161,7 +1162,7 @@ void print_board(Board *board) {
 
 bool delete_board(Board *board) {
     if (board == NULL || board->board == NULL) {
-        printf("delete_board(): board is NULL.");
+        pstdout("delete_board(): board is NULL.");
         return false;
     }
 
