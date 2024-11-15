@@ -297,7 +297,6 @@ int main() {
                 pstdout("Main Game Loop: Player 02 is playing!");
                 game_process_player_play_packets(buffer, 2);
             }
-            player_01->play = true;
         }
     }
 
