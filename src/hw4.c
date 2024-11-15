@@ -274,10 +274,16 @@ int main() {
 
         if (player_01->board->initialized == true && player_02->board->initialized == true) {
             pstdout("Both Players have initialized valid boards!");
-            pstdout("Player 01 will now begin playing! Have fun!");
+
+            pstdout("Player 01's board:");
             print_board(player_01->board);
+
+            pstdout("Player 01's board:");
             print_board(player_02->board);
+
             pstdout("Printed boards!");
+            
+            pstdout("Player 01 will now begin playing! Have fun!");
             player_01->play = true;
         }
         
@@ -388,7 +394,7 @@ void send_initialize_board_response(int conn_fd, const char *error_packet, char 
 
 void game_process_player_board_initialize(char *buffer, int player_number) {
     Player *player = player_number == 1 ? player_01 : player_02;
-    Player *other_player = player_number == 1 ? player_02 : player_01;
+    Player *other_player = player_number == 2 ? player_01 : player_02;
 
     read_from_player_socket(player->socket->connection_fd, buffer);
 
@@ -558,6 +564,8 @@ void game_process_player_play_packets(char *buffer, int player_number) {
 
                     if (remaining_ships == 0) {
                         send_shot_response(player->socket->connection_fd, remaining_ships, hit_or_miss);
+                        pstdout("game_process_player_play_packets(): Player %d has won!", player->number);
+                        pstdout("game_process_player_play_packets(): Game will terminate once a reply from Player %d is received...", other_player->number);
                         read_from_player_socket(other_player->socket->connection_fd, buffer);
                         send_response(player->socket->connection_fd, HALT_WIN);
                         send_response(other_player->socket->connection_fd, HALT_LOSS);
@@ -793,7 +801,6 @@ bool are_ships_overlapping(Board *board, Piece *pieces) {
     }
 
     delete_board(board_cpy);
-    pstdout("are_ships_overlapping(): no overlapping ships and deleting 'board_cpy'!");
     return false;
 }
 
@@ -960,6 +967,7 @@ char *get_game_state_from_board(Board *board) {
                 else if (idx == -2) {
                     snprintf(temp, sizeof(temp), " H %d %d", j, i);
                 }
+
                 strncat(buffer, temp, BUFFER_SIZE - strlen(buffer) - 1);
             }
         }
