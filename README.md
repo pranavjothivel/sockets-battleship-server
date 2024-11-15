@@ -5,7 +5,7 @@
 - **Programming Language:** C  
 - **Compiler:** GCC  
 - **Tools/Technologies:** C Sockets API, Valgrind  
-- **Development Environment:** Debian running on GitHub Codespaces  
+- **Development Environment:** Debian 12 running on GitHub Codespaces  
 
 This project is a classic implementation of the Battleship game, hosted on a server to enable gameplay between two clients. Each client connects to a designated port and communicates with the server by sending a series of valid commands to set up their boards and play. The game continues until one player successfully sinks all the opponent’s ships or a player forfeits.
 
@@ -57,3 +57,5 @@ Once your Codespace is running:
 2. Run `./build_scripts/build.sh` to build the Battleship server and client executables.
 
 ### 3. Start Playing
+
+<!-- Add comments for start playing, valid commands, using scripted testing, and valgrind and vs code launch targets -->
