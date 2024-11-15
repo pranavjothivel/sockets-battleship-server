@@ -388,9 +388,11 @@ void send_initialize_board_response(int conn_fd, const char *error_packet, char 
     send_response(conn_fd, error_packet);
     if (token != NULL) {
         free(token);
+        token = NULL;
     }
     if (pieces != NULL) {
         free(pieces);
+        pieces = NULL;
     }
 }
 
