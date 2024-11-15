@@ -836,6 +836,7 @@ bool delete_board(Board *board) {
     board->height = 0;
     board->initialized = false;
     free(board);
+    board = NULL;
 
     return true; // Indicate successful deletion
 }
