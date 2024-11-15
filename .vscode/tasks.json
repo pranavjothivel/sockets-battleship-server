@@ -9,6 +9,9 @@
             "presentation": {
                 "group": "groupA",
                 "panel": "dedicated"
+            },
+            "options": {
+                "cwd": "${workspaceFolder}"
             }
         },
         {
@@ -19,6 +22,9 @@
             "presentation": {
                 "group": "groupA",
                 "panel": "dedicated"
+            },
+            "options": {
+                "cwd": "${workspaceFolder}"
             }
         },
         {
@@ -29,12 +35,15 @@
             "presentation": {
                 "group": "groupA",
                 "panel": "dedicated"
+            },
+            "options": {
+                "cwd": "${workspaceFolder}"
             }
         },
         {
             "label": "Run Automated Player 1",
             "type": "shell",
-            "command": "sleep 10 && ./build_scripts/player_automated.sh",
+            "command": "./build_scripts/run_automated.sh",
             "args": [
                 "${input:player1Arg}"
             ],
@@ -42,12 +51,15 @@
             "presentation": {
                 "group": "groupA",
                 "panel": "dedicated"
+            },
+            "options": {
+                "cwd": "${workspaceFolder}"
             }
         },
         {
             "label": "Run Automated Player 2",
             "type": "shell",
-            "command": "sleep 10 && ./build_scripts/player_automated.sh",
+            "command": "./build_scripts/run_automated.sh",
             "args": [
                 "${input:player2Arg}"
             ],
@@ -55,6 +67,9 @@
             "presentation": {
                 "group": "groupA",
                 "panel": "dedicated"
+            },
+            "options": {
+                "cwd": "${workspaceFolder}"
             }
         },
         {
@@ -64,7 +79,10 @@
                 "Run Interactive Player 1",
                 "Run Interactive Player 2"
             ],
-            "problemMatcher": []
+            "problemMatcher": [],
+            "options": {
+                "cwd": "${workspaceFolder}"
+            }
         },
         {
             "label": "Run Server and Automated Players",
@@ -73,7 +91,10 @@
                 "Run Automated Player 1",
                 "Run Automated Player 2"
             ],
-            "problemMatcher": []
+            "problemMatcher": [],
+            "options": {
+                "cwd": "${workspaceFolder}"
+            }
         }
     ],
     "inputs": [
