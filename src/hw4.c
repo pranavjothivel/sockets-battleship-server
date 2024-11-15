@@ -304,10 +304,13 @@ int main() {
 }
 
 PlayerSocketConnection* initialize_socket_connection(int port) {
+    pstdout("initialize_socket(): Initializing socket for a player on port %d", port);
+
     PlayerSocketConnection* player_socket = malloc(sizeof(PlayerSocketConnection));
 
     if (player_socket == NULL) {
         pstderr("initialize_socket(): Error malloc'ing socket");
+        free(player_socket);
         return NULL;
     }
 
