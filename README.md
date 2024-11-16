@@ -161,4 +161,9 @@ To manually launch the server and interactive clients, follow the below steps.
 Once you have started the server and two clients, please enter the corresponding player number (`1` or `2`) in each client to begin playing! The game continues until a player forfeits or takes out all of their opponents' ships.
 
 ## Memory leak checking and server logs
-Run ```gcc -g src/hw4.c -o ./build/hw4 > output.log 2>&1 && valgrind --leak-check=full --log-file=valgrind_output.log --show-leak-kinds=all ./build/hw4 >> output.log 2>&1``` in the event you would like to save the server logs and the log file from **Valgrind**. The server's output log is `output.log` and **Valgrind**'s log filename is `valgrind_output.log`.
+
+To run the server with Valgrind:
+```bash
+gcc -g src/hw4.c -o ./build/hw4 > output.log 2>&1 && valgrind --leak-check=full --log-file=valgrind_output.log --show-leak-kinds=all ./build/hw4 >> output.log 2>&1
+```
+The server's output log is `output.log` and **Valgrind**'s log filename is `valgrind_output.log`.
