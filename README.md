@@ -55,8 +55,12 @@ To start a Codespace:
 
 ### 2. Configure and Run Build Scripts
 Once your Codespace is running:
-1. Run `chmod +x ./build_scripts/*.sh` to make all the build scripts executable.
-2. Run `./build_scripts/build.sh` to build the Battleship server and client executables.
+1. Run ```bash
+chmod +x ./build_scripts/*.sh
+``` to make all the build scripts executable.
+2. Run ```bash
+./build_scripts/build.sh
+``` to build the Battleship server and client executables.
 
 
 ## Ship format
@@ -149,14 +153,22 @@ There are two pre-configured Tasks called `Run Server and Automated Players` and
 To manually launch the server and automated clients, follow the below steps.
 
 1. Go to `Terminal` → `New Terminal` → `Split Terminal` (repeat twice - this is located to the top-right of the terminal).
-2. Run `./build_scripts/run_server.sh` in one terminal tab to start the server.
-3. Run `./build_scripts/run_automated.sh scripts/<file_name>` in each of the two remaining terminal tabs to start the automated player clients.
+2. Run ```bash
+./build_scripts/run_server.sh
+``` in one terminal tab to start the server.
+3. Run ```bash
+./build_scripts/run_automated.sh scripts/<file_name>
+``` in each of the two remaining terminal tabs to start the automated player clients.
 
 To manually launch the server and interactive clients, follow the below steps.
 
 1. Go to `Terminal` → `New Terminal` → `Split Terminal` (repeat twice - this is located to the top-right of the terminal).
-2. Run `./build_scripts/run_server.sh` in one terminal tab to start the server.
-3. Run `./build_scripts/run_interactive.sh` in each of the two remaining terminal tabs to start the interactive player clients.
+2. Run ```bash
+./build_scripts/run_server.sh
+``` in one terminal tab to start the server.
+3. Run ```bash
+./build_scripts/run_interactive.sh
+``` in each of the two remaining terminal tabs to start the interactive player clients.
 
 Once you have started the server and two clients, please enter the corresponding player number (`1` or `2`) in each client to begin playing! The game continues until a player forfeits or takes out all of their opponents' ships.
 
