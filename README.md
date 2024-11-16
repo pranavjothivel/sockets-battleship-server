@@ -57,6 +57,13 @@ Once your Codespace is running:
 1. Run `chmod +x ./build_scripts/*.sh` to make all the build scripts executable.
 2. Run `./build_scripts/build.sh` to build the Battleship server and client executables.
 
+
+## Ship format
+In this Battleship implementation, Tetris-style pieces are used as ships, adding a unique twist to the classic game. Each ship's shape and orientation mimic Tetris pieces, requiring players to strategically position them on the board for optimal coverage and defense.
+
+![Tetris Pieces Diagrams](https://github.com/pranavjothivel/sockets-battleship-server/blob/main/docs/images/TetrisDiagram.drawio.jpeg?raw=true)
+
+
 ## Packet format
 
 ### Part 1: Received Packet Formats
@@ -128,11 +135,6 @@ Server responses include:
 4. **Shoot Packet Errors:**
    - `400`: Invalid Shoot packet (coordinates out of game board bounds)
    - `401`: Invalid Shoot packet (coordinate already guessed)
-
-## Ship format
-In this Battleship implementation, Tetris-style pieces are used as ships, adding a unique twist to the classic game. Each ship's shape and orientation mimic Tetris pieces, requiring players to strategically position them on the board for optimal coverage and defense.
-
-![Tetris Pieces Diagrams](https://github.com/pranavjothivel/sockets-battleship-server/blob/main/docs/images/TetrisDiagram.drawio.jpeg?raw=true)
 
 ## How to play
 
