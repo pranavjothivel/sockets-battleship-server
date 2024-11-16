@@ -368,7 +368,7 @@ void send_shot_response(int conn_fd, int remaining_ships, const char miss_or_hit
     }
     char response[BUFFER_SIZE];
     snprintf(response, sizeof(response), "R %d %c", remaining_ships, miss_or_hit);
-    send(conn_fd, response, strlen(response), 0);
+    send_response(conn_fd, response);
 }
 
 void read_from_player_socket(int socket_fd, char *buffer) {
