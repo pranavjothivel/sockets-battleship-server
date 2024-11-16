@@ -1,6 +1,6 @@
-# CSE 220 - Homework 01 - Sockets Battleship Server  
-**Pranav Jothivel**<br>
-**November 2024**
+# CSE 220 - Homework 01: Sockets Battleship Server  
+**Author:** Pranav Jothivel  
+**Date:** November 2024
 
 ## About
 - **Programming Language:** C  
