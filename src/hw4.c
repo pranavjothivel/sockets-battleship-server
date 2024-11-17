@@ -893,7 +893,7 @@ bool is_position_out_of_bounds_on_board(Board *board, int piece_row_idx, int pie
     }
 
     if (piece_row_idx < 0 || piece_col_idx < 0) {
-        pstderr("is_position_out_of_bounds_on_board(): piece row or piece column is NULL, therefore trivally out of bounds!");
+        pstderr("is_position_out_of_bounds_on_board(): piece row or piece column is 0, therefore trivally out of bounds!");
         return true;
     }
 
@@ -903,45 +903,6 @@ bool is_position_out_of_bounds_on_board(Board *board, int piece_row_idx, int pie
     return !(new_row_idx >= 0 && new_col_idx >= 0 && new_row_idx < board->height && new_col_idx < board->width);
 
 
-}
-
-void insert_pieces_by_shape_rotation_into_board(Board *board, Piece *pieces) {
-    if (board == NULL || board->board == NULL) {
-        pstderr("insert_shape_rotation_into_board(): board is NULL!");
-        return;
-    }
-    if (pieces == NULL) {
-        pstderr("insert_shape_rotation_into_board(): 'pieces' is NULL!");
-        return;
-    }
-
-    // piece type and rotations have already been validated
-
-    for (int p_idx = 0; p_idx < MAX_PIECES; p_idx++) {
-        int piece_identifier = p_idx + 1;
-        Piece *piece = &pieces[p_idx];
-
-        if (piece->type == 1) {
-            board->board[piece->row][piece->col] = piece_identifier;
-            board->board[piece->row][piece->col + 1] = piece_identifier;
-            board->board[piece->row + 1][piece->col] = piece_identifier;
-            board->board[piece->row + 1 ][piece->col + 1] = piece_identifier;
-        }
-        else if (piece->type == 2) {
-            if (piece->rotation == 1 || piece->rotation == 3) {
-                board->board[piece->row][piece->col] = piece_identifier;
-                board->board[piece->row + 1][piece->col] = piece_identifier;
-                board->board[piece->row + 2][piece->col] = piece_identifier;
-                board->board[piece->row + 3][piece->col] = piece_identifier;
-            }
-            else if (piece->rotation == 2 || piece->rotation == 4) {
-                board->board[piece->row][piece->col] = piece_identifier;
-                board->board[piece->row][piece->col + 1] = piece_identifier;
-                board->board[piece->row][piece->col + 2] = piece_identifier;
-                board->board[piece->row][piece->col + 3] = piece_identifier;
-            }
-        }
-    }
 }
 
 char *get_game_state_from_board(Board *board) {
