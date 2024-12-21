@@ -1,4 +1,4 @@
-# CSE 220 - Homework 01: Sockets Battleship Server  
+# Sockets Battleship Server  
 **Author:** Pranav Jothivel  
 **Date:** November 2024
 
